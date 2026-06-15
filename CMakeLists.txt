@@ -13,29 +13,34 @@ set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
 set(CMAKE_AUTOUIC OFF)
 
-# Qt 6 — Widgets для UI, Network для общения с прод-API messenger.xipher.pro.
-find_package(Qt6 REQUIRED COMPONENTS Widgets Network)
+# Qt 6 — Widgets для UI, Network для REST, WebSockets для realtime /ws.
+find_package(Qt6 REQUIRED COMPONENTS Widgets Network WebSockets)
 
 set(SOURCES
     src/main.cpp
     src/app/MainWindow.cpp
     src/net/ApiClient.cpp
     src/net/Session.cpp
+    src/net/WsClient.cpp
     src/ui/BackgroundWidget.cpp
     src/ui/LoginPage.cpp
     src/ui/RegisterPage.cpp
     src/ui/HomePage.cpp
+    src/ui/ChatPage.cpp
 )
 
 set(HEADERS
     src/app/MainWindow.h
     src/net/ApiClient.h
     src/net/Session.h
+    src/net/Models.h
+    src/net/WsClient.h
     src/ui/Theme.h
     src/ui/BackgroundWidget.h
     src/ui/LoginPage.h
     src/ui/RegisterPage.h
     src/ui/HomePage.h
+    src/ui/ChatPage.h
 )
 
 qt_add_executable(Xipher
@@ -50,6 +55,7 @@ target_include_directories(Xipher PRIVATE src)
 target_link_libraries(Xipher PRIVATE
     Qt6::Widgets
     Qt6::Network
+    Qt6::WebSockets
 )
 
 set_target_properties(Xipher PROPERTIES

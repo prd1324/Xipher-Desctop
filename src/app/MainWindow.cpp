@@ -1,9 +1,10 @@
 #include "app/MainWindow.h"
 #include "net/ApiClient.h"
+#include "net/WsClient.h"
 #include "net/Session.h"
 #include "ui/LoginPage.h"
 #include "ui/RegisterPage.h"
-#include "ui/HomePage.h"
+#include "ui/ChatPage.h"
 #include "ui/BackgroundWidget.h"
 #include "ui/Theme.h"
 
@@ -17,17 +18,18 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     setMinimumSize(720, 600);
 
     api_ = new ApiClient(this);
+    ws_  = new WsClient(this);
 
     stack_    = new QStackedWidget(this);
     splash_   = buildSplash();
     login_    = new LoginPage(api_, this);
     register_ = new RegisterPage(api_, this);
-    home_     = new HomePage(this);
+    chat_     = new ChatPage(api_, ws_, this);
 
     stack_->addWidget(splash_);    // PageSplash
     stack_->addWidget(login_);     // PageLogin
     stack_->addWidget(register_);  // PageRegister
-    stack_->addWidget(home_);      // PageHome
+    stack_->addWidget(chat_);      // PageChat
     setCentralWidget(stack_);
 
     // Навигация между вход ↔ регистрация
@@ -43,14 +45,14 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
         stack_->setCurrentIndex(PageLogin);
     });
 
-    // Успешный вход → домашний экран.
+    // Успешный вход → мессенджер.
     connect(login_, &LoginPage::loginSucceeded, this, [this]() {
-        home_->refresh();
-        stack_->setCurrentIndex(PageHome);
+        enterChat();
     });
 
-    // Выход → чистим сессию, назад на вход.
-    connect(home_, &HomePage::logoutRequested, this, [this]() {
+    // Выход → останавливаем realtime, чистим сессию, назад на вход.
+    connect(chat_, &ChatPage::logoutRequested, this, [this]() {
+        ws_->stop();
         Session::instance().clear();
         stack_->setCurrentIndex(PageLogin);
     });
@@ -63,8 +65,7 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
             if (!r.username.isEmpty()) s.username = r.username;
             s.isPremium = r.isPremium;
             s.save();
-            home_->refresh();
-            stack_->setCurrentIndex(PageHome);
+            enterChat();
         } else {
             Session::instance().clear();
             stack_->setCurrentIndex(PageLogin);
@@ -104,6 +105,11 @@ QWidget* MainWindow::buildSplash() {
     lay->addWidget(loading);
     lay->addStretch();
     return page;
+}
+
+void MainWindow::enterChat() {
+    stack_->setCurrentIndex(PageChat);
+    chat_->load();   // грузим чаты + запускаем realtime
 }
 
 void MainWindow::tryRestoreSession() {

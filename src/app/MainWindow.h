@@ -4,9 +4,10 @@
 class QStackedWidget;
 class QWidget;
 class ApiClient;
+class WsClient;
 class LoginPage;
 class RegisterPage;
-class HomePage;
+class ChatPage;
 
 // Главное окно: переключает экраны вход / регистрация / домашний.
 class MainWindow : public QMainWindow {
@@ -15,15 +16,17 @@ public:
     explicit MainWindow(QWidget* parent = nullptr);
 
 private:
-    enum Page { PageSplash = 0, PageLogin = 1, PageRegister = 2, PageHome = 3 };
+    enum Page { PageSplash = 0, PageLogin = 1, PageRegister = 2, PageChat = 3 };
 
     void tryRestoreSession();
+    void enterChat();
     QWidget* buildSplash();
 
     QStackedWidget* stack_   = nullptr;
     ApiClient*      api_     = nullptr;
+    WsClient*       ws_      = nullptr;
     QWidget*        splash_  = nullptr;
     LoginPage*      login_   = nullptr;
     RegisterPage*   register_ = nullptr;
-    HomePage*       home_    = nullptr;
+    ChatPage*       chat_    = nullptr;
 };

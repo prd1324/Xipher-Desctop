@@ -1,8 +1,11 @@
 #pragma once
 #include <QObject>
 #include <QString>
+#include <QList>
 #include <QJsonObject>
 #include <functional>
+
+#include "net/Models.h"
 
 class QNetworkAccessManager;
 class QNetworkReply;
@@ -35,6 +38,11 @@ public:
     void checkUsername(const QString& username);
     void validateToken(const QString& token);
 
+    // Чат (токен берётся из Session).
+    void getChats();
+    void getMessages(const QString& friendId);
+    void sendMessage(const QString& receiverId, const QString& content, const QString& tempId);
+
     QString baseUrl() const { return base_; }
     void setBaseUrl(const QString& url) { base_ = url; }
 
@@ -43,6 +51,11 @@ signals:
     void registerFinished(const AuthResult& result);
     void usernameChecked(const QString& username, bool available, const QString& message);
     void tokenValidated(const AuthResult& result);
+
+    void chatsLoaded(const QList<Chat>& chats);
+    void messagesLoaded(const QString& friendId, const QList<ChatMessage>& messages);
+    void messageSent(const ChatMessage& message, const QString& receiverId, const QString& tempId);
+    void chatError(const QString& context, const QString& message);
 
 private:
     // Низкоуровневый POST JSON. callback(obj, ok, networkError).
