@@ -43,6 +43,13 @@ public:
     void getMessages(const QString& friendId);
     void sendMessage(const QString& receiverId, const QString& content, const QString& tempId);
 
+    // Люди и друзья.
+    void searchUsers(const QString& query);
+    void sendFriendRequest(const QString& username);
+    void getFriendRequests();
+    void acceptFriend(const QString& requestId);
+    void rejectFriend(const QString& requestId);
+
     QString baseUrl() const { return base_; }
     void setBaseUrl(const QString& url) { base_ = url; }
 
@@ -56,6 +63,11 @@ signals:
     void messagesLoaded(const QString& friendId, const QList<ChatMessage>& messages);
     void messageSent(const ChatMessage& message, const QString& receiverId, const QString& tempId);
     void chatError(const QString& context, const QString& message);
+
+    void usersFound(const QString& query, const QList<UserHit>& users);
+    void friendRequestSent(const QString& username, bool ok, const QString& message);
+    void friendRequestsLoaded(const QList<FriendRequest>& requests);
+    void friendActionDone(const QString& requestId, bool accepted, bool ok);
 
 private:
     // Низкоуровневый POST JSON. callback(obj, ok, networkError).

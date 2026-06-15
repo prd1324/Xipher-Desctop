@@ -207,3 +207,75 @@ void ApiClient::sendMessage(const QString& receiverId, const QString& content, c
         emit messageSent(m, receiverId, tempId);
     });
 }
+
+// ── Люди и друзья ─────────────────────────────────────────────────────────────
+
+void ApiClient::searchUsers(const QString& query) {
+    QJsonObject body{{QStringLiteral("token"), Session::instance().token},
+                     {QStringLiteral("query"), query}};
+    postJson(QStringLiteral("/api/search-users"), body,
+             [this, query](const QJsonObject& obj, bool ok, const QString&) {
+        if (!ok && obj.isEmpty()) return;
+        QList<UserHit> users;
+        for (const QJsonValue& v : obj.value(QStringLiteral("users")).toArray()) {
+            const QJsonObject o = v.toObject();
+            UserHit u;
+            u.id          = o.value(QStringLiteral("user_id")).toString();
+            u.username    = o.value(QStringLiteral("username")).toString();
+            u.displayName = o.value(QStringLiteral("display_name")).toString();
+            if (u.displayName.isEmpty()) u.displayName = u.username;
+            u.avatarUrl   = o.value(QStringLiteral("avatar_url")).toString();
+            u.isPremium   = o.value(QStringLiteral("is_premium")).toBool(false);
+            users.append(u);
+        }
+        emit usersFound(query, users);
+    });
+}
+
+void ApiClient::sendFriendRequest(const QString& username) {
+    QJsonObject body{{QStringLiteral("token"), Session::instance().token},
+                     {QStringLiteral("username"), username}};
+    postJson(QStringLiteral("/api/friend-request"), body,
+             [this, username](const QJsonObject& obj, bool ok, const QString& netErr) {
+        if (!ok && obj.isEmpty()) { emit friendRequestSent(username, false, netErr); return; }
+        const bool success = obj.value(QStringLiteral("success")).toBool(false);
+        emit friendRequestSent(username, success, obj.value(QStringLiteral("message")).toString());
+    });
+}
+
+void ApiClient::getFriendRequests() {
+    QJsonObject body{{QStringLiteral("token"), Session::instance().token}};
+    postJson(QStringLiteral("/api/friend-requests"), body,
+             [this](const QJsonObject& obj, bool ok, const QString&) {
+        if (!ok && obj.isEmpty()) return;
+        QList<FriendRequest> reqs;
+        for (const QJsonValue& v : obj.value(QStringLiteral("requests")).toArray()) {
+            const QJsonObject o = v.toObject();
+            FriendRequest r;
+            r.id             = o.value(QStringLiteral("id")).toString();
+            r.senderId       = o.value(QStringLiteral("sender_id")).toString();
+            r.senderUsername = o.value(QStringLiteral("sender_username")).toString();
+            r.createdAt      = o.value(QStringLiteral("created_at")).toString();
+            reqs.append(r);
+        }
+        emit friendRequestsLoaded(reqs);
+    });
+}
+
+void ApiClient::acceptFriend(const QString& requestId) {
+    QJsonObject body{{QStringLiteral("token"), Session::instance().token},
+                     {QStringLiteral("request_id"), requestId}};
+    postJson(QStringLiteral("/api/accept-friend"), body,
+             [this, requestId](const QJsonObject& obj, bool ok, const QString&) {
+        emit friendActionDone(requestId, true, ok && obj.value(QStringLiteral("success")).toBool(false));
+    });
+}
+
+void ApiClient::rejectFriend(const QString& requestId) {
+    QJsonObject body{{QStringLiteral("token"), Session::instance().token},
+                     {QStringLiteral("request_id"), requestId}};
+    postJson(QStringLiteral("/api/reject-friend"), body,
+             [this, requestId](const QJsonObject& obj, bool ok, const QString&) {
+        emit friendActionDone(requestId, false, ok && obj.value(QStringLiteral("success")).toBool(false));
+    });
+}

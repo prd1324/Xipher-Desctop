@@ -27,6 +27,7 @@ set(SOURCES
     src/ui/RegisterPage.cpp
     src/ui/HomePage.cpp
     src/ui/ChatPage.cpp
+    src/ui/NewChatDialog.cpp
 )
 
 set(HEADERS
@@ -41,6 +42,7 @@ set(HEADERS
     src/ui/RegisterPage.h
     src/ui/HomePage.h
     src/ui/ChatPage.h
+    src/ui/NewChatDialog.h
 )
 
 qt_add_executable(Xipher
@@ -62,3 +64,34 @@ set_target_properties(Xipher PROPERTIES
     OUTPUT_NAME "Xipher"
     RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
 )
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  Подпись релиза (опционально). По умолчанию ВЫКЛ — для локальной разработки
+#  не нужна. На релизе включается -DXIPHER_SIGN=ON и подставляется сертификат.
+#  Бесплатные пути к сертификату: SignPath Foundation (open-source) или
+#  Microsoft Store (MSIX). См. docs/SIGNING.md.
+# ─────────────────────────────────────────────────────────────────────────────
+option(XIPHER_SIGN "Подписывать Xipher.exe через signtool после сборки" OFF)
+set(XIPHER_SIGN_PFX  "" CACHE FILEPATH "Путь к .pfx сертификату")
+set(XIPHER_SIGN_SHA1 "" CACHE STRING   "Отпечаток (thumbprint) сертификата из хранилища")
+set(XIPHER_SIGN_PASS "" CACHE STRING   "Пароль к .pfx (если задан)")
+set(XIPHER_TIMESTAMP_URL "http://timestamp.sectigo.com" CACHE STRING "RFC3161 timestamp URL")
+set(XIPHER_SIGNTOOL "signtool" CACHE FILEPATH "Путь к signtool.exe (из Windows SDK)")
+
+if(WIN32 AND XIPHER_SIGN)
+    set(_sign_args sign /fd SHA256 /tr "${XIPHER_TIMESTAMP_URL}" /td SHA256)
+    if(XIPHER_SIGN_PFX)
+        list(APPEND _sign_args /f "${XIPHER_SIGN_PFX}")
+        if(XIPHER_SIGN_PASS)
+            list(APPEND _sign_args /p "${XIPHER_SIGN_PASS}")
+        endif()
+    elseif(XIPHER_SIGN_SHA1)
+        list(APPEND _sign_args /sha1 "${XIPHER_SIGN_SHA1}")
+    else()
+        message(WARNING "XIPHER_SIGN=ON, но не задан ни XIPHER_SIGN_PFX, ни XIPHER_SIGN_SHA1")
+    endif()
+    add_custom_command(TARGET Xipher POST_BUILD
+        COMMAND "${XIPHER_SIGNTOOL}" ${_sign_args} "$<TARGET_FILE:Xipher>"
+        COMMENT "Подпись Xipher.exe (signtool)"
+        VERBATIM)
+endif()

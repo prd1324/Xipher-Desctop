@@ -21,6 +21,23 @@ struct Chat {
     bool    isBot = false;
 };
 
+// Результат поиска пользователей (/api/search-users → users[]).
+struct UserHit {
+    QString id;            // user_id
+    QString username;
+    QString displayName;
+    QString avatarUrl;
+    bool    isPremium = false;
+};
+
+// Входящая заявка в друзья (/api/friend-requests → requests[]).
+struct FriendRequest {
+    QString id;            // request_id
+    QString senderId;
+    QString senderUsername;
+    QString createdAt;
+};
+
 // Сообщение (/api/messages → messages[], /api/send-message ack).
 struct ChatMessage {
     QString id;

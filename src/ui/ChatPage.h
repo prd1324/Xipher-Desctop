@@ -30,7 +30,11 @@ public:
 signals:
     void logoutRequested();
 
+public:
+    void openChatWith(const QString& userId, const QString& displayName, const QString& username);
+
 private slots:
+    void openNewChatDialog();
     void onChatsLoaded(const QList<Chat>& chats);
     void onMessagesLoaded(const QString& friendId, const QList<ChatMessage>& messages);
     void onMessageSent(const ChatMessage& msg, const QString& receiverId, const QString& tempId);

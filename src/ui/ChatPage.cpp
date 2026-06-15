@@ -1,4 +1,5 @@
 #include "ui/ChatPage.h"
+#include "ui/NewChatDialog.h"
 #include "net/ApiClient.h"
 #include "net/WsClient.h"
 #include "net/Session.h"
@@ -105,11 +106,15 @@ void ChatPage::buildUi() {
     shl->setContentsMargins(16, 0, 12, 0);
     auto* brand = new QLabel(QStringLiteral("Xipher"), sideHeader);
     brand->setObjectName(QStringLiteral("brandTitle"));
+    auto* newChatBtn = new QPushButton(QStringLiteral("✏  Новый"), sideHeader);
+    newChatBtn->setObjectName(QStringLiteral("iconBtn"));
+    newChatBtn->setCursor(Qt::PointingHandCursor);
     auto* logoutBtn = new QPushButton(QStringLiteral("Выйти"), sideHeader);
     logoutBtn->setObjectName(QStringLiteral("iconBtn"));
     logoutBtn->setCursor(Qt::PointingHandCursor);
     shl->addWidget(brand);
     shl->addStretch();
+    shl->addWidget(newChatBtn);
     shl->addWidget(logoutBtn);
 
     auto* searchWrap = new QWidget(sidebar);
@@ -205,6 +210,7 @@ void ChatPage::buildUi() {
     root->addWidget(sidebar);
     root->addWidget(convStack_, 1);
 
+    connect(newChatBtn, &QPushButton::clicked, this, &ChatPage::openNewChatDialog);
     connect(logoutBtn, &QPushButton::clicked, this, &ChatPage::logoutRequested);
     connect(chatList_, &QListWidget::itemClicked, this, &ChatPage::onChatClicked);
     connect(sendBtn_, &QPushButton::clicked, this, &ChatPage::onSendClicked);
@@ -463,4 +469,29 @@ void ChatPage::bumpChat(const QString& peerId, const QString& lastText,
 
 void ChatPage::onSearchChanged(const QString&) {
     rebuildChatList();
+}
+
+void ChatPage::openNewChatDialog() {
+    auto* dlg = new NewChatDialog(api_, this);
+    connect(dlg, &NewChatDialog::openChatRequested, this,
+            [this](const QString& id, const QString& displayName, const QString& username) {
+        openChatWith(id, displayName, username);
+    });
+    connect(dlg, &NewChatDialog::friendsChanged, this, [this]() { api_->getChats(); });
+    dlg->setAttribute(Qt::WA_DeleteOnClose);
+    dlg->exec();
+}
+
+void ChatPage::openChatWith(const QString& userId, const QString& displayName, const QString& username) {
+    const int idx = indexOfChat(userId);
+    if (idx >= 0) {
+        openChat(chats_[idx]);
+        return;
+    }
+    // Чата ещё нет в списке — открываем «на лету».
+    Chat c;
+    c.id = userId;
+    c.name = username;
+    c.displayName = displayName.isEmpty() ? username : displayName;
+    openChat(c);
 }
