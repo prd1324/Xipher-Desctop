@@ -1,0 +1,75 @@
+name: build-and-sign
+
+# Сборка Windows-релиза Xipher Desktop и подпись.
+# Подпись бесплатна через SignPath Foundation (для open-source) — см. docs/SIGNING.md.
+# Шаг подписи выполняется только если задана переменная репозитория
+# SIGNPATH_ORGANIZATION_ID, иначе просто публикуется неподписанный артефакт.
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # MSVC-окружение (cl, link) для генератора Ninja.
+      - uses: ilammy/msvc-dev-cmd@v1
+
+      # Qt 6 + модуль WebSockets.
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.7.*'
+          host: windows
+          target: desktop
+          arch: win64_msvc2019_64
+          modules: 'qtwebsockets'
+          cache: true
+
+      - name: Configure
+        run: cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build build
+
+      - name: Deploy Qt runtime
+        run: windeployqt --release --no-translations --no-system-d3d-compiler build/bin/Xipher.exe
+
+      # Неподписанный артефакт (всегда). Если настроен SignPath — он будет подписан ниже.
+      - name: Upload unsigned artifact
+        id: upload-unsigned
+        uses: actions/upload-artifact@v4
+        with:
+          name: Xipher-windows
+          path: build/bin
+
+      # ── Подпись через SignPath (бесплатно для open-source) ──────────────────
+      # Что заполнить (один раз):
+      #   1) Зарегистрировать проект на signpath.io (Foundation-программа для OSS).
+      #   2) Repo → Settings → Variables: SIGNPATH_ORGANIZATION_ID.
+      #   3) Repo → Settings → Secrets: SIGNPATH_API_TOKEN.
+      #   4) project-slug / signing-policy-slug / artifact-configuration-slug —
+      #      из настроек проекта SignPath.
+      - name: Sign with SignPath
+        if: ${{ vars.SIGNPATH_ORGANIZATION_ID != '' }}
+        uses: signpath/github-action-submit-signing-request@v1
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: 'xipher-desktop'
+          signing-policy-slug: 'release-signing'
+          artifact-configuration-slug: 'exe'
+          github-artifact-id: ${{ steps.upload-unsigned.outputs.artifact-id }}
+          wait-for-completion: true
+          output-artifact-directory: 'signed'
+
+      - name: Upload signed artifact
+        if: ${{ vars.SIGNPATH_ORGANIZATION_ID != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: Xipher-windows-signed
+          path: signed
