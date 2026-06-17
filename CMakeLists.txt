@@ -29,6 +29,8 @@ set(SOURCES
     src/ui/HomePage.cpp
     src/ui/ChatPage.cpp
     src/ui/NewChatDialog.cpp
+    src/ui/VoiceMessageWidget.cpp
+    src/ui/RecordingBar.cpp
 )
 
 set(HEADERS
@@ -45,6 +47,8 @@ set(HEADERS
     src/ui/HomePage.h
     src/ui/ChatPage.h
     src/ui/NewChatDialog.h
+    src/ui/VoiceMessageWidget.h
+    src/ui/RecordingBar.h
 )
 
 qt_add_executable(Xipher

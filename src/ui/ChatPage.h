@@ -9,6 +9,8 @@
 class ApiClient;
 class WsClient;
 class VoiceRecorder;
+class VoiceMessageWidget;
+class RecordingBar;
 class QListWidget;
 class QLineEdit;
 class QPushButton;
@@ -59,6 +61,7 @@ private slots:
 private:
     void buildUi();
     void playVoice(const QString& serverPath);
+    void onVoicePlayPause(VoiceMessageWidget* w, const QString& path);
     void rebuildChatList();
     int  indexOfChat(const QString& id) const;
     void openChat(const Chat& chat);
@@ -86,18 +89,20 @@ private:
     QLineEdit*   composer_   = nullptr;
     QPushButton* sendBtn_    = nullptr;
     QPushButton* micBtn_     = nullptr;
-    QLabel*      recTime_    = nullptr;
+    RecordingBar* recBar_    = nullptr;
 
     // Голос
     VoiceRecorder* recorder_ = nullptr;
     QMediaPlayer*  player_   = nullptr;
     QAudioOutput*  audioOut_ = nullptr;
-    QTimer*        recTimer_ = nullptr;
-    int            recSecs_  = 0;
     QString        pendingVoiceTempId_;
     QString        pendingVoiceReceiver_;
     QString        pendingPlayPath_;
     QHash<QString, QString> voiceCache_;   // серверный путь → локальный temp-файл
+
+    // Текущий проигрываемый голосовой виджет (для прогресса/таймера).
+    VoiceMessageWidget* activeVoice_ = nullptr;
+    QString             activeVoicePath_;
 
     QList<Chat> chats_;
     QString     currentPeerId_;

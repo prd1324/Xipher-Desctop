@@ -1,5 +1,7 @@
 #include "ui/ChatPage.h"
 #include "ui/NewChatDialog.h"
+#include "ui/VoiceMessageWidget.h"
+#include "ui/RecordingBar.h"
 #include "net/ApiClient.h"
 #include "net/WsClient.h"
 #include "net/Session.h"
@@ -55,8 +57,6 @@ ChatPage::ChatPage(ApiClient* api, WsClient* ws, QWidget* parent)
     player_   = new QMediaPlayer(this);
     audioOut_ = new QAudioOutput(this);
     player_->setAudioOutput(audioOut_);
-    recTimer_ = new QTimer(this);
-    recTimer_->setInterval(1000);
 
     buildUi();
 
@@ -70,10 +70,23 @@ ChatPage::ChatPage(ApiClient* api, WsClient* ws, QWidget* parent)
     connect(recorder_, &VoiceRecorder::error, this, [this](const QString&) {
         cancelRecording();
     });
-    connect(recTimer_, &QTimer::timeout, this, [this]() {
-        ++recSecs_;
-        recTime_->setText(QStringLiteral("● %1:%2")
-            .arg(recSecs_ / 60).arg(recSecs_ % 60, 2, 10, QLatin1Char('0')));
+
+    // Прогресс воспроизведения → активный голосовой виджет.
+    connect(player_, &QMediaPlayer::positionChanged, this, [this](qint64 pos) {
+        if (!activeVoice_) return;
+        const qint64 dur = player_->duration();
+        activeVoice_->setProgress(dur > 0 ? qreal(pos) / dur : 0.0);
+        activeVoice_->setElapsedMs(pos);
+    });
+    connect(player_, &QMediaPlayer::durationChanged, this, [this](qint64 dur) {
+        if (activeVoice_) activeVoice_->setTotalMs(dur);
+    });
+    connect(player_, &QMediaPlayer::mediaStatusChanged, this, [this](QMediaPlayer::MediaStatus s) {
+        if (s == QMediaPlayer::EndOfMedia && activeVoice_) {
+            activeVoice_->setPlaying(false);
+            activeVoice_->setProgress(0.0);
+            activeVoice_->setElapsedMs(0);
+        }
     });
 }
 
@@ -240,26 +253,11 @@ void ChatPage::buildUi() {
     cbl->addWidget(micBtn_);
     cbl->addWidget(sendBtn_);
 
-    // Страница 1 — запись [Отмена][● mm:ss]……[➤]
-    auto* rec = new QWidget();
-    auto* rbl = new QHBoxLayout(rec);
-    rbl->setContentsMargins(14, 10, 14, 10);
-    rbl->setSpacing(10);
-    auto* cancelRec = new QPushButton(QStringLiteral("Отмена"), rec);
-    cancelRec->setObjectName(QStringLiteral("iconBtn"));
-    cancelRec->setCursor(Qt::PointingHandCursor);
-    recTime_ = new QLabel(QStringLiteral("● 0:00"), rec);
-    recTime_->setStyleSheet(QStringLiteral("color:#E26A63;font-weight:700;font-size:15px;"));
-    auto* stopSend = new QPushButton(QStringLiteral("➤"), rec);
-    stopSend->setObjectName(QStringLiteral("sendBtn"));
-    stopSend->setCursor(Qt::PointingHandCursor);
-    rbl->addWidget(cancelRec);
-    rbl->addWidget(recTime_);
-    rbl->addStretch();
-    rbl->addWidget(stopSend);
+    // Страница 1 — запись (стиль Discord): пульс + waveform + таймер.
+    recBar_ = new RecordingBar();
 
-    composerStack_->addWidget(normal);   // 0
-    composerStack_->addWidget(rec);      // 1
+    composerStack_->addWidget(normal);    // 0
+    composerStack_->addWidget(recBar_);   // 1
     composerStack_->setCurrentIndex(0);
 
     cvl->addWidget(convHeader);
@@ -280,8 +278,8 @@ void ChatPage::buildUi() {
     connect(composer_, &QLineEdit::returnPressed, this, &ChatPage::onSendClicked);
     connect(search_, &QLineEdit::textChanged, this, &ChatPage::onSearchChanged);
     connect(micBtn_, &QPushButton::clicked, this, &ChatPage::onMicClicked);
-    connect(cancelRec, &QPushButton::clicked, this, &ChatPage::cancelRecording);
-    connect(stopSend, &QPushButton::clicked, this, &ChatPage::stopAndSendVoice);
+    connect(recBar_, &RecordingBar::cancelClicked, this, &ChatPage::cancelRecording);
+    connect(recBar_, &RecordingBar::sendClicked, this, &ChatPage::stopAndSendVoice);
 }
 
 void ChatPage::load() {
@@ -396,6 +394,11 @@ void ChatPage::openChat(const Chat& chat) {
 }
 
 void ChatPage::clearMessages() {
+    // Останавливаем воспроизведение — виджеты ниже будут удалены.
+    player_->stop();
+    activeVoice_ = nullptr;
+    pendingPlayPath_.clear();
+
     QLayoutItem* it;
     while ((it = msgLayout_->takeAt(0)) != nullptr) {
         if (it->widget()) it->widget()->deleteLater();
@@ -450,26 +453,19 @@ void ChatPage::addBubble(const ChatMessage& msg) {
     }
 
     if (msg.isVoice()) {
-        // Голосовое: кнопка ▶ + подпись
-        auto* vrow = new QWidget(bubble);
-        vrow->setStyleSheet(QStringLiteral("background:transparent;"));
-        auto* vl = new QHBoxLayout(vrow);
-        vl->setContentsMargins(0, 2, 0, 2);
-        vl->setSpacing(10);
-        auto* play = new QPushButton(QStringLiteral("▶"), vrow);
-        play->setCursor(Qt::PointingHandCursor);
-        play->setFixedSize(34, 34);
-        play->setStyleSheet(QStringLiteral(
-            "border:none;border-radius:17px;background:rgba(255,255,255,0.14);color:#fff;font-size:13px;"));
-        auto* lbl = new QLabel(QStringLiteral("Голосовое сообщение"), vrow);
-        lbl->setStyleSheet(QString("color:%1;font-size:14px;")
-                               .arg(msg.sent ? QStringLiteral("#F0ECFA") : QStringLiteral("#F3F1F8")));
-        vl->addWidget(play);
-        vl->addWidget(lbl);
-        vl->addStretch();
-        bl->addWidget(vrow);
+        // Голосовое (Telegram-style): ▶/⏸ + waveform + время.
+        const QString seed = msg.id.isEmpty() ? msg.filePath : msg.id;
+        auto* voice = new VoiceMessageWidget(seed, msg.sent, bubble);
+        voice->setMinimumWidth(240);
+        bubble->setMinimumWidth(280);
+        bl->addWidget(voice);
         const QString path = msg.filePath;
-        connect(play, &QPushButton::clicked, this, [this, path]() { playVoice(path); });
+        connect(voice, &VoiceMessageWidget::playPauseClicked, this,
+                [this, voice, path]() { onVoicePlayPause(voice, path); });
+        connect(voice, &VoiceMessageWidget::seekRequested, this, [this, voice](qreal frac) {
+            if (activeVoice_ == voice && player_->duration() > 0)
+                player_->setPosition(qint64(frac * player_->duration()));
+        });
     } else {
         auto* text = new QLabel(msg.content, bubble);
         text->setWordWrap(true);
@@ -594,25 +590,46 @@ void ChatPage::openChatWith(const QString& userId, const QString& displayName, c
 
 void ChatPage::onMicClicked() {
     if (currentPeerId_.isEmpty() || recorder_->isRecording()) return;
-    recSecs_ = 0;
-    recTime_->setText(QStringLiteral("● 0:00"));
     if (recorder_->start()) {
         composerStack_->setCurrentIndex(1);
-        recTimer_->start();
+        recBar_->start();
     }
 }
 
 void ChatPage::cancelRecording() {
-    recTimer_->stop();
+    recBar_->stop();
     recorder_->cancel();
     composerStack_->setCurrentIndex(0);
 }
 
 void ChatPage::stopAndSendVoice() {
-    recTimer_->stop();
+    recBar_->stop();
     composerStack_->setCurrentIndex(0);
     pendingVoiceReceiver_ = currentPeerId_;
     recorder_->stop();   // → onVoiceRecorded
+}
+
+void ChatPage::onVoicePlayPause(VoiceMessageWidget* w, const QString& path) {
+    // Тот же виджет — пауза/продолжение.
+    if (activeVoice_ == w) {
+        if (player_->playbackState() == QMediaPlayer::PlayingState) {
+            player_->pause();
+            w->setPlaying(false);
+        } else {
+            player_->play();
+            w->setPlaying(true);
+        }
+        return;
+    }
+    // Переключение на другой голосовой — сбрасываем предыдущий.
+    if (activeVoice_) {
+        activeVoice_->setPlaying(false);
+        activeVoice_->setProgress(0.0);
+    }
+    activeVoice_ = w;
+    activeVoicePath_ = path;
+    w->setPlaying(true);
+    playVoice(path);
 }
 
 void ChatPage::onVoiceRecorded(const QString& filePath, const QString& mimeType) {
