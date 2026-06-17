@@ -18,6 +18,7 @@
 #include <QFontMetrics>
 #include <QTime>
 #include <QTimer>
+#include <algorithm>
 
 namespace {
 
@@ -342,7 +343,12 @@ void ChatPage::clearMessages() {
 void ChatPage::onMessagesLoaded(const QString& friendId, const QList<ChatMessage>& messages) {
     if (friendId != currentPeerId_) return;
     clearMessages();
-    for (const ChatMessage& m : messages) {
+    // Сервер отдаёт историю в порядке DESC (новые первыми) — разворачиваем в
+    // хронологию: старые сверху, новые снизу.
+    QList<ChatMessage> ordered = messages;
+    std::sort(ordered.begin(), ordered.end(),
+              [](const ChatMessage& a, const ChatMessage& b) { return a.createdAt < b.createdAt; });
+    for (const ChatMessage& m : ordered) {
         if (!m.id.isEmpty()) shownIds_.insert(m.id);
         addBubble(m);
     }
