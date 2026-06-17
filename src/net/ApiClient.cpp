@@ -146,6 +146,9 @@ static ChatMessage parseMessage(const QJsonObject& o) {
     m.sent        = o.value(QStringLiteral("sent")).toBool(false);
     m.isRead      = o.value(QStringLiteral("is_read")).toBool(false);
     m.isDelivered = o.value(QStringLiteral("is_delivered")).toBool(false);
+    m.filePath    = o.value(QStringLiteral("file_path")).toString();
+    m.fileName    = o.value(QStringLiteral("file_name")).toString();
+    m.fileSize    = static_cast<long long>(o.value(QStringLiteral("file_size")).toDouble(0));
     const QJsonObject reply = o.value(QStringLiteral("reply")).toObject();
     m.replyAuthor  = reply.value(QStringLiteral("author")).toString();
     m.replySnippet = reply.value(QStringLiteral("snippet")).toString();
@@ -259,6 +262,80 @@ void ApiClient::getFriendRequests() {
             reqs.append(r);
         }
         emit friendRequestsLoaded(reqs);
+    });
+}
+
+// ── Голосовые / файлы ─────────────────────────────────────────────────────────
+
+void ApiClient::uploadVoice(const QByteArray& audioBytes, const QString& mimeType, const QString& tempId) {
+    QJsonObject body{
+        {QStringLiteral("token"), Session::instance().token},
+        {QStringLiteral("voice_data"), QString::fromLatin1(audioBytes.toBase64())},
+        {QStringLiteral("mime_type"), mimeType}
+    };
+    postJson(QStringLiteral("/api/upload-voice"), body,
+             [this, tempId](const QJsonObject& obj, bool ok, const QString& netErr) {
+        if (!ok && obj.isEmpty()) { emit chatError(QStringLiteral("voice"), netErr); return; }
+        if (!obj.value(QStringLiteral("success")).toBool(false)) {
+            emit chatError(QStringLiteral("voice"),
+                obj.value(QStringLiteral("message")).toString(QStringLiteral("Не удалось загрузить голос")));
+            return;
+        }
+        emit voiceUploaded(obj.value(QStringLiteral("file_path")).toString(),
+                           obj.value(QStringLiteral("file_name")).toString(),
+                           static_cast<long long>(obj.value(QStringLiteral("file_size")).toDouble(0)),
+                           tempId);
+    });
+}
+
+void ApiClient::sendVoice(const QString& receiverId, const QString& filePath, const QString& fileName,
+                          long long fileSize, const QString& caption, const QString& tempId) {
+    QJsonObject body{
+        {QStringLiteral("token"), Session::instance().token},
+        {QStringLiteral("receiver_id"), receiverId},
+        {QStringLiteral("content"), caption},
+        {QStringLiteral("message_type"), QStringLiteral("voice")},
+        {QStringLiteral("file_path"), filePath},
+        {QStringLiteral("file_name"), fileName},
+        {QStringLiteral("file_size"), static_cast<double>(fileSize)},
+        {QStringLiteral("temp_id"), tempId}
+    };
+    postJson(QStringLiteral("/api/send-message"), body,
+             [this, receiverId, filePath, fileName, fileSize, caption, tempId](
+                 const QJsonObject& obj, bool ok, const QString& netErr) {
+        if (!ok && obj.isEmpty()) { emit chatError(QStringLiteral("send"), netErr); return; }
+        if (!obj.value(QStringLiteral("success")).toBool(false)) {
+            emit chatError(QStringLiteral("send"),
+                obj.value(QStringLiteral("message")).toString(QStringLiteral("Не удалось отправить")));
+            return;
+        }
+        ChatMessage m;
+        m.id          = obj.value(QStringLiteral("message_id")).toString();
+        m.senderId    = Session::instance().userId;
+        m.content     = caption;
+        m.messageType = QStringLiteral("voice");
+        m.filePath    = obj.value(QStringLiteral("file_path")).toString(filePath);
+        m.fileName    = fileName;
+        m.fileSize    = fileSize;
+        m.time        = obj.value(QStringLiteral("time")).toString();
+        m.createdAt   = obj.value(QStringLiteral("created_at")).toString();
+        m.status      = QStringLiteral("sent");
+        m.sent        = true;
+        emit messageSent(m, receiverId, tempId);
+    });
+}
+
+void ApiClient::fetchFile(const QString& filePath) {
+    QNetworkRequest req(QUrl(base_ + filePath));
+    req.setRawHeader("Authorization", "Bearer " + Session::instance().token.toUtf8());
+    QNetworkReply* reply = nam_->get(req);
+    QObject::connect(reply, &QNetworkReply::finished, this, [this, reply, filePath]() {
+        reply->deleteLater();
+        if (reply->error() != QNetworkReply::NoError) {
+            emit chatError(QStringLiteral("file"), reply->errorString());
+            return;
+        }
+        emit fileFetched(filePath, reply->readAll());
     });
 }
 

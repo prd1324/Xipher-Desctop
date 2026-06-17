@@ -13,8 +13,8 @@ set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
 set(CMAKE_AUTOUIC OFF)
 
-# Qt 6 — Widgets для UI, Network для REST, WebSockets для realtime /ws.
-find_package(Qt6 REQUIRED COMPONENTS Widgets Network WebSockets)
+# Qt 6 — Widgets (UI), Network (REST), WebSockets (realtime), Multimedia (голос).
+find_package(Qt6 REQUIRED COMPONENTS Widgets Network WebSockets Multimedia)
 
 set(SOURCES
     src/main.cpp
@@ -22,6 +22,7 @@ set(SOURCES
     src/net/ApiClient.cpp
     src/net/Session.cpp
     src/net/WsClient.cpp
+    src/net/VoiceRecorder.cpp
     src/ui/BackgroundWidget.cpp
     src/ui/LoginPage.cpp
     src/ui/RegisterPage.cpp
@@ -36,6 +37,7 @@ set(HEADERS
     src/net/Session.h
     src/net/Models.h
     src/net/WsClient.h
+    src/net/VoiceRecorder.h
     src/ui/Theme.h
     src/ui/BackgroundWidget.h
     src/ui/LoginPage.h
@@ -58,6 +60,7 @@ target_link_libraries(Xipher PRIVATE
     Qt6::Widgets
     Qt6::Network
     Qt6::WebSockets
+    Qt6::Multimedia
 )
 
 set_target_properties(Xipher PROPERTIES

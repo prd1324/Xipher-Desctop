@@ -3,6 +3,7 @@
 #include "net/ApiClient.h"
 #include "net/WsClient.h"
 #include "net/Session.h"
+#include "net/VoiceRecorder.h"
 
 #include <QHBoxLayout>
 #include <QVBoxLayout>
@@ -18,6 +19,11 @@
 #include <QFontMetrics>
 #include <QTime>
 #include <QTimer>
+#include <QMediaPlayer>
+#include <QAudioOutput>
+#include <QDir>
+#include <QFile>
+#include <QDateTime>
 #include <algorithm>
 
 namespace {
@@ -45,12 +51,30 @@ QLabel* makeAvatar(const QString& text, int size) {
 
 ChatPage::ChatPage(ApiClient* api, WsClient* ws, QWidget* parent)
     : QWidget(parent), api_(api), ws_(ws) {
+    recorder_ = new VoiceRecorder(this);
+    player_   = new QMediaPlayer(this);
+    audioOut_ = new QAudioOutput(this);
+    player_->setAudioOutput(audioOut_);
+    recTimer_ = new QTimer(this);
+    recTimer_->setInterval(1000);
+
     buildUi();
 
     connect(api_, &ApiClient::chatsLoaded,    this, &ChatPage::onChatsLoaded);
     connect(api_, &ApiClient::messagesLoaded,  this, &ChatPage::onMessagesLoaded);
     connect(api_, &ApiClient::messageSent,     this, &ChatPage::onMessageSent);
     connect(ws_,  &WsClient::newMessage,       this, &ChatPage::onWsMessage);
+    connect(api_, &ApiClient::voiceUploaded,   this, &ChatPage::onVoiceUploaded);
+    connect(api_, &ApiClient::fileFetched,     this, &ChatPage::onFileFetched);
+    connect(recorder_, &VoiceRecorder::recordingFinished, this, &ChatPage::onVoiceRecorded);
+    connect(recorder_, &VoiceRecorder::error, this, [this](const QString&) {
+        cancelRecording();
+    });
+    connect(recTimer_, &QTimer::timeout, this, [this]() {
+        ++recSecs_;
+        recTime_->setText(QStringLiteral("● %1:%2")
+            .arg(recSecs_ / 60).arg(recSecs_ % 60, 2, 10, QLatin1Char('0')));
+    });
 }
 
 void ChatPage::buildUi() {
@@ -81,6 +105,11 @@ void ChatPage::buildUi() {
     background:qlineargradient(x1:0,y1:0,x2:1,y2:1,stop:0 #8B5CF6,stop:1 #6D28D9);
 }
 #sendBtn:hover { background:#9B72F8; }
+#micBtn {
+    min-width:44px; max-width:44px; min-height:44px; max-height:44px; border:none;
+    border-radius:22px; background:#1A1822; color:#ACA6BD; font-size:16px;
+}
+#micBtn:hover { color:#F3F1F8; background:#221F2C; }
 #peerName { font-size:15px; font-weight:700; color:#F3F1F8; }
 #peerStatus { font-size:12px; color:#726C82; }
 #emptyHint { font-size:15px; color:#726C82; }
@@ -188,17 +217,50 @@ void ChatPage::buildUi() {
 
     auto* composerBar = new QWidget(conv);
     composerBar->setObjectName(QStringLiteral("composerBar"));
-    auto* cbl = new QHBoxLayout(composerBar);
+    auto* cblOuter = new QVBoxLayout(composerBar);
+    cblOuter->setContentsMargins(0, 0, 0, 0);
+    composerStack_ = new QStackedWidget(composerBar);
+    cblOuter->addWidget(composerStack_);
+
+    // Страница 0 — обычный ввод [текст][🎤][➤]
+    auto* normal = new QWidget();
+    auto* cbl = new QHBoxLayout(normal);
     cbl->setContentsMargins(14, 10, 14, 10);
     cbl->setSpacing(10);
-    composer_ = new QLineEdit(composerBar);
+    composer_ = new QLineEdit(normal);
     composer_->setObjectName(QStringLiteral("composer"));
     composer_->setPlaceholderText(QStringLiteral("Сообщение…"));
-    sendBtn_ = new QPushButton(QStringLiteral("➤"), composerBar);
+    micBtn_ = new QPushButton(QStringLiteral("🎤"), normal);
+    micBtn_->setObjectName(QStringLiteral("micBtn"));
+    micBtn_->setCursor(Qt::PointingHandCursor);
+    sendBtn_ = new QPushButton(QStringLiteral("➤"), normal);
     sendBtn_->setObjectName(QStringLiteral("sendBtn"));
     sendBtn_->setCursor(Qt::PointingHandCursor);
     cbl->addWidget(composer_, 1);
+    cbl->addWidget(micBtn_);
     cbl->addWidget(sendBtn_);
+
+    // Страница 1 — запись [Отмена][● mm:ss]……[➤]
+    auto* rec = new QWidget();
+    auto* rbl = new QHBoxLayout(rec);
+    rbl->setContentsMargins(14, 10, 14, 10);
+    rbl->setSpacing(10);
+    auto* cancelRec = new QPushButton(QStringLiteral("Отмена"), rec);
+    cancelRec->setObjectName(QStringLiteral("iconBtn"));
+    cancelRec->setCursor(Qt::PointingHandCursor);
+    recTime_ = new QLabel(QStringLiteral("● 0:00"), rec);
+    recTime_->setStyleSheet(QStringLiteral("color:#E26A63;font-weight:700;font-size:15px;"));
+    auto* stopSend = new QPushButton(QStringLiteral("➤"), rec);
+    stopSend->setObjectName(QStringLiteral("sendBtn"));
+    stopSend->setCursor(Qt::PointingHandCursor);
+    rbl->addWidget(cancelRec);
+    rbl->addWidget(recTime_);
+    rbl->addStretch();
+    rbl->addWidget(stopSend);
+
+    composerStack_->addWidget(normal);   // 0
+    composerStack_->addWidget(rec);      // 1
+    composerStack_->setCurrentIndex(0);
 
     cvl->addWidget(convHeader);
     cvl->addWidget(msgScroll_, 1);
@@ -217,6 +279,9 @@ void ChatPage::buildUi() {
     connect(sendBtn_, &QPushButton::clicked, this, &ChatPage::onSendClicked);
     connect(composer_, &QLineEdit::returnPressed, this, &ChatPage::onSendClicked);
     connect(search_, &QLineEdit::textChanged, this, &ChatPage::onSearchChanged);
+    connect(micBtn_, &QPushButton::clicked, this, &ChatPage::onMicClicked);
+    connect(cancelRec, &QPushButton::clicked, this, &ChatPage::cancelRecording);
+    connect(stopSend, &QPushButton::clicked, this, &ChatPage::stopAndSendVoice);
 }
 
 void ChatPage::load() {
@@ -384,12 +449,35 @@ void ChatPage::addBubble(const ChatMessage& msg) {
         bl->addWidget(reply);
     }
 
-    auto* text = new QLabel(msg.content, bubble);
-    text->setWordWrap(true);
-    text->setTextInteractionFlags(Qt::TextSelectableByMouse);
-    text->setStyleSheet(QString("color:%1;font-size:15px;")
-                            .arg(msg.sent ? QStringLiteral("#F0ECFA") : QStringLiteral("#F3F1F8")));
-    bl->addWidget(text);
+    if (msg.isVoice()) {
+        // Голосовое: кнопка ▶ + подпись
+        auto* vrow = new QWidget(bubble);
+        vrow->setStyleSheet(QStringLiteral("background:transparent;"));
+        auto* vl = new QHBoxLayout(vrow);
+        vl->setContentsMargins(0, 2, 0, 2);
+        vl->setSpacing(10);
+        auto* play = new QPushButton(QStringLiteral("▶"), vrow);
+        play->setCursor(Qt::PointingHandCursor);
+        play->setFixedSize(34, 34);
+        play->setStyleSheet(QStringLiteral(
+            "border:none;border-radius:17px;background:rgba(255,255,255,0.14);color:#fff;font-size:13px;"));
+        auto* lbl = new QLabel(QStringLiteral("Голосовое сообщение"), vrow);
+        lbl->setStyleSheet(QString("color:%1;font-size:14px;")
+                               .arg(msg.sent ? QStringLiteral("#F0ECFA") : QStringLiteral("#F3F1F8")));
+        vl->addWidget(play);
+        vl->addWidget(lbl);
+        vl->addStretch();
+        bl->addWidget(vrow);
+        const QString path = msg.filePath;
+        connect(play, &QPushButton::clicked, this, [this, path]() { playVoice(path); });
+    } else {
+        auto* text = new QLabel(msg.content, bubble);
+        text->setWordWrap(true);
+        text->setTextInteractionFlags(Qt::TextSelectableByMouse);
+        text->setStyleSheet(QString("color:%1;font-size:15px;")
+                                .arg(msg.sent ? QStringLiteral("#F0ECFA") : QStringLiteral("#F3F1F8")));
+        bl->addWidget(text);
+    }
 
     QString metaText = msg.time;
     if (msg.sent) {
@@ -500,4 +588,99 @@ void ChatPage::openChatWith(const QString& userId, const QString& displayName, c
     c.name = username;
     c.displayName = displayName.isEmpty() ? username : displayName;
     openChat(c);
+}
+
+// ── Голосовые сообщения ──────────────────────────────────────────────────────
+
+void ChatPage::onMicClicked() {
+    if (currentPeerId_.isEmpty() || recorder_->isRecording()) return;
+    recSecs_ = 0;
+    recTime_->setText(QStringLiteral("● 0:00"));
+    if (recorder_->start()) {
+        composerStack_->setCurrentIndex(1);
+        recTimer_->start();
+    }
+}
+
+void ChatPage::cancelRecording() {
+    recTimer_->stop();
+    recorder_->cancel();
+    composerStack_->setCurrentIndex(0);
+}
+
+void ChatPage::stopAndSendVoice() {
+    recTimer_->stop();
+    composerStack_->setCurrentIndex(0);
+    pendingVoiceReceiver_ = currentPeerId_;
+    recorder_->stop();   // → onVoiceRecorded
+}
+
+void ChatPage::onVoiceRecorded(const QString& filePath, const QString& mimeType) {
+    QFile f(filePath);
+    if (!f.open(QIODevice::ReadOnly)) return;
+    const QByteArray bytes = f.readAll();
+    f.close();
+    if (bytes.isEmpty()) return;
+
+    const QString tempId = QStringLiteral("tmpv_%1").arg(++tempCounter_);
+    pendingVoiceTempId_ = tempId;
+    shownIds_.insert(tempId);
+
+    // Оптимистичный баббл (играем сразу из локального файла).
+    ChatMessage m;
+    m.id = tempId;
+    m.sent = true;
+    m.status = QStringLiteral("sent");
+    m.messageType = QStringLiteral("voice");
+    m.filePath = filePath;   // локальный путь → playVoice сыграет напрямую
+    m.time = QTime::currentTime().toString(QStringLiteral("HH:mm"));
+    if (pendingVoiceReceiver_ == currentPeerId_) {
+        addBubble(m);
+        scrollToBottom();
+    }
+
+    api_->uploadVoice(bytes, mimeType, tempId);
+}
+
+void ChatPage::onVoiceUploaded(const QString& filePath, const QString& fileName,
+                               long long fileSize, const QString& tempId) {
+    Q_UNUSED(tempId);
+    if (pendingVoiceReceiver_.isEmpty()) return;
+    const QString caption = QStringLiteral("🎤 Голосовое сообщение");
+    api_->sendVoice(pendingVoiceReceiver_, filePath, fileName, fileSize, caption, pendingVoiceTempId_);
+    bumpChat(pendingVoiceReceiver_, caption,
+             QTime::currentTime().toString(QStringLiteral("HH:mm")), false);
+}
+
+void ChatPage::playVoice(const QString& path) {
+    if (path.isEmpty()) return;
+    // Локальный путь (оптимистичный или уже скачанный) — играем сразу.
+    if (!path.startsWith(QStringLiteral("/files"))) {
+        player_->setSource(QUrl::fromLocalFile(path));
+        player_->play();
+        return;
+    }
+    if (voiceCache_.contains(path)) {
+        player_->setSource(QUrl::fromLocalFile(voiceCache_.value(path)));
+        player_->play();
+        return;
+    }
+    pendingPlayPath_ = path;
+    api_->fetchFile(path);   // скачаем с токеном, потом сыграем
+}
+
+void ChatPage::onFileFetched(const QString& filePath, const QByteArray& bytes) {
+    const QString local = QDir::temp().filePath(
+        QStringLiteral("xipher_dl_%1.m4a").arg(qHash(filePath)));
+    QFile f(local);
+    if (f.open(QIODevice::WriteOnly)) {
+        f.write(bytes);
+        f.close();
+        voiceCache_.insert(filePath, local);
+        if (filePath == pendingPlayPath_) {
+            pendingPlayPath_.clear();
+            player_->setSource(QUrl::fromLocalFile(local));
+            player_->play();
+        }
+    }
 }

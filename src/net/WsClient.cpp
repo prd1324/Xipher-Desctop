@@ -73,6 +73,9 @@ void WsClient::onTextMessage(const QString& text) {
         m.status      = o.value(QStringLiteral("status")).toString();
         m.isRead      = o.value(QStringLiteral("is_read")).toBool(false);
         m.isDelivered = o.value(QStringLiteral("is_delivered")).toBool(false);
+        m.filePath    = o.value(QStringLiteral("file_path")).toString();
+        m.fileName    = o.value(QStringLiteral("file_name")).toString();
+        m.fileSize    = static_cast<long long>(o.value(QStringLiteral("file_size")).toDouble(0));
 
         // chat_id с серверной стороны — это «другой участник» с точки зрения
         // получателя пакета (для исходящего эха — receiver, для входящего — sender).

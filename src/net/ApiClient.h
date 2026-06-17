@@ -43,6 +43,12 @@ public:
     void getMessages(const QString& friendId);
     void sendMessage(const QString& receiverId, const QString& content, const QString& tempId);
 
+    // Голосовые / файлы.
+    void uploadVoice(const QByteArray& audioBytes, const QString& mimeType, const QString& tempId);
+    void sendVoice(const QString& receiverId, const QString& filePath, const QString& fileName,
+                   long long fileSize, const QString& caption, const QString& tempId);
+    void fetchFile(const QString& filePath);   // GET /files/... с токеном
+
     // Люди и друзья.
     void searchUsers(const QString& query);
     void sendFriendRequest(const QString& username);
@@ -63,6 +69,10 @@ signals:
     void messagesLoaded(const QString& friendId, const QList<ChatMessage>& messages);
     void messageSent(const ChatMessage& message, const QString& receiverId, const QString& tempId);
     void chatError(const QString& context, const QString& message);
+
+    // voiceUploaded → отдаёт путь на сервере; затем зовём sendVoice.
+    void voiceUploaded(const QString& filePath, const QString& fileName, long long fileSize, const QString& tempId);
+    void fileFetched(const QString& filePath, const QByteArray& bytes);
 
     void usersFound(const QString& query, const QList<UserHit>& users);
     void friendRequestSent(const QString& username, bool ok, const QString& message);

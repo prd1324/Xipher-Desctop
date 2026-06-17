@@ -2,11 +2,13 @@
 #include <QWidget>
 #include <QList>
 #include <QSet>
+#include <QHash>
 
 #include "net/Models.h"
 
 class ApiClient;
 class WsClient;
+class VoiceRecorder;
 class QListWidget;
 class QLineEdit;
 class QPushButton;
@@ -14,6 +16,9 @@ class QLabel;
 class QStackedWidget;
 class QScrollArea;
 class QVBoxLayout;
+class QTimer;
+class QMediaPlayer;
+class QAudioOutput;
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  ChatPage — основной экран мессенджера (раскладка как в Telegram/веб-чате):
@@ -43,8 +48,17 @@ private slots:
     void onSendClicked();
     void onSearchChanged(const QString& text);
 
+    // Голосовые
+    void onMicClicked();
+    void cancelRecording();
+    void stopAndSendVoice();
+    void onVoiceRecorded(const QString& filePath, const QString& mimeType);
+    void onVoiceUploaded(const QString& filePath, const QString& fileName, long long fileSize, const QString& tempId);
+    void onFileFetched(const QString& filePath, const QByteArray& bytes);
+
 private:
     void buildUi();
+    void playVoice(const QString& serverPath);
     void rebuildChatList();
     int  indexOfChat(const QString& id) const;
     void openChat(const Chat& chat);
@@ -68,8 +82,22 @@ private:
     QScrollArea* msgScroll_  = nullptr;
     QWidget*     msgContainer_ = nullptr;
     QVBoxLayout* msgLayout_  = nullptr;
+    QStackedWidget* composerStack_ = nullptr;  // 0 — ввод, 1 — запись
     QLineEdit*   composer_   = nullptr;
     QPushButton* sendBtn_    = nullptr;
+    QPushButton* micBtn_     = nullptr;
+    QLabel*      recTime_    = nullptr;
+
+    // Голос
+    VoiceRecorder* recorder_ = nullptr;
+    QMediaPlayer*  player_   = nullptr;
+    QAudioOutput*  audioOut_ = nullptr;
+    QTimer*        recTimer_ = nullptr;
+    int            recSecs_  = 0;
+    QString        pendingVoiceTempId_;
+    QString        pendingVoiceReceiver_;
+    QString        pendingPlayPath_;
+    QHash<QString, QString> voiceCache_;   // серверный путь → локальный temp-файл
 
     QList<Chat> chats_;
     QString     currentPeerId_;

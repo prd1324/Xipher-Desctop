@@ -51,7 +51,14 @@ struct ChatMessage {
     bool    isRead = false;
     bool    isDelivered = false;
 
+    // Вложение (voice/file/image): путь вида "/files/<имя>"
+    QString filePath;
+    QString fileName;
+    long long fileSize = 0;
+
     // Reply-превью (если есть)
     QString replyAuthor;
     QString replySnippet;
+
+    bool isVoice() const { return messageType == QStringLiteral("voice"); }
 };
