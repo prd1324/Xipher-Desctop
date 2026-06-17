@@ -120,6 +120,22 @@ void ChatPage::buildUi() {
 #chatList::item:selected { background:rgba(139,92,246,0.16); }
 #msgArea { background:#0B0A0E; border:none; }
 #msgArea > QWidget > QWidget { background:#0B0A0E; }
+/* Тонкий ненавязчивый скроллбар (как в Telegram): без стрелок и фона */
+#msgArea QScrollBar:vertical { background:transparent; width:8px; margin:2px; }
+#msgArea QScrollBar::handle:vertical {
+    background:rgba(255,255,255,0.12); border-radius:4px; min-height:36px;
+}
+#msgArea QScrollBar::handle:vertical:hover { background:rgba(255,255,255,0.22); }
+#msgArea QScrollBar::add-line:vertical, #msgArea QScrollBar::sub-line:vertical { height:0; }
+#msgArea QScrollBar::add-page:vertical, #msgArea QScrollBar::sub-page:vertical { background:transparent; }
+/* То же для списка чатов */
+#chatList QScrollBar:vertical { background:transparent; width:8px; margin:2px; }
+#chatList QScrollBar::handle:vertical {
+    background:rgba(255,255,255,0.10); border-radius:4px; min-height:36px;
+}
+#chatList QScrollBar::handle:vertical:hover { background:rgba(255,255,255,0.20); }
+#chatList QScrollBar::add-line:vertical, #chatList QScrollBar::sub-line:vertical { height:0; }
+#chatList QScrollBar::add-page:vertical, #chatList QScrollBar::sub-page:vertical { background:transparent; }
 #composerBar { background:#131218; border-top:1px solid rgba(255,255,255,0.10); }
 #composer {
     background:#1A1822; border:1px solid rgba(255,255,255,0.10); border-radius:20px;
@@ -511,9 +527,12 @@ void ChatPage::addBubble(const ChatMessage& msg) {
 }
 
 void ChatPage::scrollToBottom() {
-    QTimer::singleShot(0, this, [this]() {
-        msgScroll_->verticalScrollBar()->setValue(msgScroll_->verticalScrollBar()->maximum());
-    });
+    auto* sb = msgScroll_->verticalScrollBar();
+    // Диапазон скролла пересчитывается ПОСЛЕ раскладки бабблов (wordwrap и т.п.),
+    // поэтому прыгаем в самый низ по сигналу rangeChanged — один раз.
+    connect(sb, &QAbstractSlider::rangeChanged, this,
+            [sb]() { sb->setValue(sb->maximum()); }, Qt::SingleShotConnection);
+    sb->setValue(sb->maximum());
 }
 
 void ChatPage::onSendClicked() {
@@ -551,9 +570,11 @@ void ChatPage::onWsMessage(const QString& peerId, const ChatMessage& msgIn, cons
     const bool dupId   = !msg.id.isEmpty() && shownIds_.contains(msg.id);
 
     if (peerId == currentPeerId_ && !dupTemp && !dupId) {
+        auto* sb = msgScroll_->verticalScrollBar();
+        const bool nearBottom = (sb->maximum() - sb->value()) < 140;
         if (!msg.id.isEmpty()) shownIds_.insert(msg.id);
         addBubble(msg);
-        scrollToBottom();
+        if (nearBottom || msg.sent) scrollToBottom();   // не дёргаем, если читаешь историю
     }
 
     bumpChat(peerId, msg.content, msg.time,
