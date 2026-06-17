@@ -2,10 +2,18 @@
 #include "ui/NewChatDialog.h"
 #include "ui/VoiceMessageWidget.h"
 #include "ui/RecordingBar.h"
+#include "ui/EmojiPicker.h"
 #include "net/ApiClient.h"
 #include "net/WsClient.h"
 #include "net/Session.h"
 #include "net/VoiceRecorder.h"
+
+#include <QMenu>
+#include <QFileDialog>
+#include <QFileInfo>
+#include <QStandardPaths>
+#include <QDesktopServices>
+#include <QToolTip>
 
 #include <QHBoxLayout>
 #include <QVBoxLayout>
@@ -38,6 +46,16 @@ QString elide(const QString& s, const QFont& f, int px) {
 // Подпись голосового с длительностью (хранится в content, т.к. сервер не отдаёт duration).
 QString voiceLabel(int secs) {
     return QStringLiteral("🎤 %1:%2").arg(secs / 60).arg(secs % 60, 2, 10, QLatin1Char('0'));
+}
+
+// Человекочитаемый размер файла.
+QString humanSize(long long bytes) {
+    if (bytes <= 0) return QString();
+    const char* u[] = {"Б", "КБ", "МБ", "ГБ"};
+    double v = double(bytes);
+    int i = 0;
+    while (v >= 1024.0 && i < 3) { v /= 1024.0; ++i; }
+    return QStringLiteral("%1 %2").arg(v, 0, 'f', (i == 0 ? 0 : 1)).arg(QString::fromUtf8(u[i]));
 }
 
 // Достаёт секунды из подписи вида "🎤 m:ss" (0 — если нет).
@@ -153,6 +171,19 @@ void ChatPage::buildUi() {
     border-radius:22px; background:#1A1822; color:#ACA6BD; font-size:16px;
 }
 #micBtn:hover { color:#F3F1F8; background:#221F2C; }
+#composerIcon {
+    min-width:38px; max-width:38px; min-height:38px; max-height:38px; border:none;
+    border-radius:19px; background:transparent; color:#ACA6BD; font-size:18px;
+}
+#composerIcon:hover { color:#F3F1F8; background:#221F2C; }
+QMenu {
+    background:#1A1822; border:1px solid rgba(255,255,255,0.12); border-radius:10px; padding:6px;
+    color:#F3F1F8;
+}
+QMenu::item { padding:8px 18px; border-radius:6px; }
+QMenu::item:selected { background:rgba(139,92,246,0.22); }
+QMenu::item:disabled { color:#55556a; }
+QMenu::separator { height:1px; background:rgba(255,255,255,0.08); margin:4px 8px; }
 #peerName { font-size:15px; font-weight:700; color:#F3F1F8; }
 #peerStatus { font-size:12px; color:#726C82; }
 #emptyHint { font-size:15px; color:#726C82; }
@@ -265,21 +296,42 @@ void ChatPage::buildUi() {
     composerStack_ = new QStackedWidget(composerBar);
     cblOuter->addWidget(composerStack_);
 
-    // Страница 0 — обычный ввод [текст][🎤][➤]
+    // Страница 0 — обычный ввод [⏱][📎][текст][😀][🎤][➤]
     auto* normal = new QWidget();
     auto* cbl = new QHBoxLayout(normal);
-    cbl->setContentsMargins(14, 10, 14, 10);
-    cbl->setSpacing(10);
+    cbl->setContentsMargins(12, 10, 12, 10);
+    cbl->setSpacing(6);
+
+    timerBtn_ = new QPushButton(QStringLiteral("⏱"), normal);
+    timerBtn_->setObjectName(QStringLiteral("composerIcon"));
+    timerBtn_->setCursor(Qt::PointingHandCursor);
+    timerBtn_->setToolTip(QStringLiteral("Исчезающие сообщения"));
+
+    attachBtn_ = new QPushButton(QStringLiteral("📎"), normal);
+    attachBtn_->setObjectName(QStringLiteral("composerIcon"));
+    attachBtn_->setCursor(Qt::PointingHandCursor);
+    attachBtn_->setToolTip(QStringLiteral("Прикрепить"));
+
     composer_ = new QLineEdit(normal);
     composer_->setObjectName(QStringLiteral("composer"));
     composer_->setPlaceholderText(QStringLiteral("Сообщение…"));
+
+    emojiBtn_ = new QPushButton(QStringLiteral("😀"), normal);
+    emojiBtn_->setObjectName(QStringLiteral("composerIcon"));
+    emojiBtn_->setCursor(Qt::PointingHandCursor);
+    emojiBtn_->setToolTip(QStringLiteral("Эмодзи"));
+
     micBtn_ = new QPushButton(QStringLiteral("🎤"), normal);
     micBtn_->setObjectName(QStringLiteral("micBtn"));
     micBtn_->setCursor(Qt::PointingHandCursor);
     sendBtn_ = new QPushButton(QStringLiteral("➤"), normal);
     sendBtn_->setObjectName(QStringLiteral("sendBtn"));
     sendBtn_->setCursor(Qt::PointingHandCursor);
+
+    cbl->addWidget(timerBtn_);
+    cbl->addWidget(attachBtn_);
     cbl->addWidget(composer_, 1);
+    cbl->addWidget(emojiBtn_);
     cbl->addWidget(micBtn_);
     cbl->addWidget(sendBtn_);
 
@@ -310,6 +362,10 @@ void ChatPage::buildUi() {
     connect(micBtn_, &QPushButton::clicked, this, &ChatPage::onMicClicked);
     connect(recBar_, &RecordingBar::cancelClicked, this, &ChatPage::cancelRecording);
     connect(recBar_, &RecordingBar::sendClicked, this, &ChatPage::stopAndSendVoice);
+    connect(emojiBtn_, &QPushButton::clicked, this, &ChatPage::onEmojiClicked);
+    connect(attachBtn_, &QPushButton::clicked, this, &ChatPage::onAttachClicked);
+    connect(timerBtn_, &QPushButton::clicked, this, &ChatPage::onTimerClicked);
+    connect(api_, &ApiClient::fileUploaded, this, &ChatPage::onFileUploaded);
 }
 
 void ChatPage::load() {
@@ -498,6 +554,28 @@ void ChatPage::addBubble(const ChatMessage& msg) {
             if (activeVoice_ == voice && player_->duration() > 0)
                 player_->setPosition(qint64(frac * player_->duration()));
         });
+    } else if (msg.messageType == QStringLiteral("file")) {
+        // Файл: 📎 имя + размер, клик — скачать и открыть.
+        auto* fbtn = new QPushButton(bubble);
+        fbtn->setCursor(Qt::PointingHandCursor);
+        fbtn->setFlat(true);
+        const QString nm = msg.fileName.isEmpty() ? QStringLiteral("файл") : msg.fileName;
+        fbtn->setText(QStringLiteral("📎  %1   %2").arg(nm, humanSize(msg.fileSize)));
+        fbtn->setStyleSheet(QString(
+            "QPushButton{border:none;background:transparent;text-align:left;font-size:14px;color:%1;}"
+            "QPushButton:hover{text-decoration:underline;}")
+            .arg(msg.sent ? QStringLiteral("#F0ECFA") : QStringLiteral("#F3F1F8")));
+        bl->addWidget(fbtn);
+        const QString path = msg.filePath, name = nm;
+        connect(fbtn, &QPushButton::clicked, this, [this, path, name]() {
+            if (path.isEmpty()) return;
+            if (!path.startsWith(QStringLiteral("/files"))) {   // локальный (только что отправленный)
+                QDesktopServices::openUrl(QUrl::fromLocalFile(path));
+                return;
+            }
+            pendingFileOpen_.insert(path, name);
+            api_->fetchFile(path);
+        });
     } else {
         auto* text = new QLabel(msg.content, bubble);
         text->setWordWrap(true);
@@ -623,6 +701,106 @@ void ChatPage::openChatWith(const QString& userId, const QString& displayName, c
     openChat(c);
 }
 
+// ── Эмодзи ───────────────────────────────────────────────────────────────────
+
+void ChatPage::onEmojiClicked() {
+    if (!emojiPicker_) {
+        emojiPicker_ = new EmojiPicker(this);
+        connect(emojiPicker_, &EmojiPicker::emojiPicked, this, [this](const QString& e) {
+            composer_->insert(e);   // вставляем в позицию курсора, пикер не закрываем
+        });
+    }
+    // Открываем панель над кнопкой, выравнивая по правому краю (как в Telegram).
+    const QPoint topRight = emojiBtn_->mapToGlobal(QPoint(emojiBtn_->width(), 0));
+    int x = topRight.x() - emojiPicker_->width();
+    int y = topRight.y() - emojiPicker_->height() - 8;
+    if (y < 0) y = emojiBtn_->mapToGlobal(QPoint(0, emojiBtn_->height() + 8)).y();
+    emojiPicker_->move(qMax(8, x), y);
+    emojiPicker_->show();
+}
+
+// ── Вложения (скрепка) ───────────────────────────────────────────────────────
+
+void ChatPage::onAttachClicked() {
+    QMenu menu(this);
+    QAction* fileAct = menu.addAction(QStringLiteral("📄  Файл"));
+    QAction* checklist = menu.addAction(QStringLiteral("✅  Чек-лист (скоро)"));
+    checklist->setEnabled(false);
+    menu.addSeparator();
+    QMenu* geo = menu.addMenu(QStringLiteral("📍  Геопозиция"));
+    QAction* geoSend = geo->addAction(QStringLiteral("Отправить (скоро)"));
+    QAction* geoLive = geo->addAction(QStringLiteral("Транслировать (Live, скоро)"));
+    geoSend->setEnabled(false);
+    geoLive->setEnabled(false);
+
+    connect(fileAct, &QAction::triggered, this, &ChatPage::pickAndSendFile);
+    menu.exec(attachBtn_->mapToGlobal(QPoint(0, attachBtn_->height() + 4)));
+}
+
+// ── Таймер исчезающих (пока UI-состояние) ────────────────────────────────────
+
+void ChatPage::onTimerClicked() {
+    QMenu menu(this);
+    const QList<QPair<QString, int>> opts = {
+        {QStringLiteral("Выключено"), 0}, {QStringLiteral("5 секунд"), 5},
+        {QStringLiteral("10 секунд"), 10}, {QStringLiteral("30 секунд"), 30},
+        {QStringLiteral("1 минута"), 60}, {QStringLiteral("1 час"), 3600},
+        {QStringLiteral("24 часа"), 86400}};
+    for (const auto& o : opts) {
+        QAction* a = menu.addAction(o.first);
+        a->setCheckable(true);
+        a->setChecked(disappearTtl_ == o.second);
+        const int v = o.second;
+        connect(a, &QAction::triggered, this, [this, v]() {
+            disappearTtl_ = v;
+            timerBtn_->setStyleSheet(v > 0
+                ? QStringLiteral("#composerIcon{color:#8B5CF6;}") : QString());
+        });
+    }
+    menu.exec(timerBtn_->mapToGlobal(QPoint(0, timerBtn_->height() + 4)));
+}
+
+// ── Файлы ────────────────────────────────────────────────────────────────────
+
+void ChatPage::pickAndSendFile() {
+    if (currentPeerId_.isEmpty()) return;
+    const QString fn = QFileDialog::getOpenFileName(this, QStringLiteral("Выберите файл"));
+    if (fn.isEmpty()) return;
+    QFile f(fn);
+    if (!f.open(QIODevice::ReadOnly)) return;
+    const QByteArray bytes = f.readAll();
+    f.close();
+
+    const QString base = QFileInfo(fn).fileName();
+    const QString tempId = QStringLiteral("tmpf_%1").arg(++tempCounter_);
+    shownIds_.insert(tempId);
+    pendingFileReceiver_ = currentPeerId_;
+
+    // Оптимистичный баббл (клик открывает локальный файл).
+    ChatMessage m;
+    m.id = tempId;
+    m.sent = true;
+    m.status = QStringLiteral("sent");
+    m.messageType = QStringLiteral("file");
+    m.fileName = base;
+    m.fileSize = bytes.size();
+    m.filePath = fn;   // локальный путь
+    m.time = QTime::currentTime().toString(QStringLiteral("HH:mm"));
+    addBubble(m);
+    scrollToBottom();
+
+    api_->uploadFile(bytes, base, tempId);
+}
+
+void ChatPage::onFileUploaded(const QString& filePath, const QString& fileName,
+                              long long fileSize, const QString& tempId) {
+    if (pendingFileReceiver_.isEmpty()) return;
+    const QString caption = QStringLiteral("📎 ") + fileName;
+    api_->sendFile(pendingFileReceiver_, filePath, fileName, fileSize, caption, tempId);
+    bumpChat(pendingFileReceiver_, caption,
+             QTime::currentTime().toString(QStringLiteral("HH:mm")), false);
+}
+
 // ── Голосовые сообщения ──────────────────────────────────────────────────────
 
 void ChatPage::onMicClicked() {
@@ -726,6 +904,22 @@ void ChatPage::playVoice(const QString& path) {
 }
 
 void ChatPage::onFileFetched(const QString& filePath, const QByteArray& bytes) {
+    // Скачивание обычного файла → сохраняем в «Загрузки» и открываем.
+    if (pendingFileOpen_.contains(filePath)) {
+        const QString name = pendingFileOpen_.take(filePath);
+        QString dir = QStandardPaths::writableLocation(QStandardPaths::DownloadLocation);
+        if (dir.isEmpty()) dir = QDir::tempPath();
+        const QString dest = QDir(dir).filePath(name);
+        QFile out(dest);
+        if (out.open(QIODevice::WriteOnly)) {
+            out.write(bytes);
+            out.close();
+            QDesktopServices::openUrl(QUrl::fromLocalFile(dest));
+        }
+        return;
+    }
+
+    // Иначе — голосовое: кэшируем и проигрываем.
     const QString local = QDir::temp().filePath(
         QStringLiteral("xipher_dl_%1.m4a").arg(qHash(filePath)));
     QFile f(local);

@@ -47,6 +47,9 @@ public:
     void uploadVoice(const QByteArray& audioBytes, const QString& mimeType, const QString& tempId);
     void sendVoice(const QString& receiverId, const QString& filePath, const QString& fileName,
                    long long fileSize, const QString& caption, const QString& tempId);
+    void uploadFile(const QByteArray& bytes, const QString& fileName, const QString& tempId);
+    void sendFile(const QString& receiverId, const QString& filePath, const QString& fileName,
+                  long long fileSize, const QString& caption, const QString& tempId);
     void fetchFile(const QString& filePath);   // GET /files/... с токеном
 
     // Люди и друзья.
@@ -72,6 +75,7 @@ signals:
 
     // voiceUploaded → отдаёт путь на сервере; затем зовём sendVoice.
     void voiceUploaded(const QString& filePath, const QString& fileName, long long fileSize, const QString& tempId);
+    void fileUploaded(const QString& filePath, const QString& fileName, long long fileSize, const QString& tempId);
     void fileFetched(const QString& filePath, const QByteArray& bytes);
 
     void usersFound(const QString& query, const QList<UserHit>& users);

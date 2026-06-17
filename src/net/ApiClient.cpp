@@ -325,6 +325,64 @@ void ApiClient::sendVoice(const QString& receiverId, const QString& filePath, co
     });
 }
 
+void ApiClient::uploadFile(const QByteArray& bytes, const QString& fileName, const QString& tempId) {
+    QJsonObject body{
+        {QStringLiteral("token"), Session::instance().token},
+        {QStringLiteral("file_data"), QString::fromLatin1(bytes.toBase64())},
+        {QStringLiteral("file_name"), fileName}
+    };
+    postJson(QStringLiteral("/api/upload-file"), body,
+             [this, fileName, tempId](const QJsonObject& obj, bool ok, const QString& netErr) {
+        if (!ok && obj.isEmpty()) { emit chatError(QStringLiteral("file"), netErr); return; }
+        if (!obj.value(QStringLiteral("success")).toBool(false)) {
+            emit chatError(QStringLiteral("file"),
+                obj.value(QStringLiteral("message")).toString(QStringLiteral("Не удалось загрузить файл")));
+            return;
+        }
+        emit fileUploaded(obj.value(QStringLiteral("file_path")).toString(),
+                          obj.value(QStringLiteral("file_name")).toString(fileName),
+                          static_cast<long long>(obj.value(QStringLiteral("file_size")).toDouble(0)),
+                          tempId);
+    });
+}
+
+void ApiClient::sendFile(const QString& receiverId, const QString& filePath, const QString& fileName,
+                         long long fileSize, const QString& caption, const QString& tempId) {
+    QJsonObject body{
+        {QStringLiteral("token"), Session::instance().token},
+        {QStringLiteral("receiver_id"), receiverId},
+        {QStringLiteral("content"), caption},
+        {QStringLiteral("message_type"), QStringLiteral("file")},
+        {QStringLiteral("file_path"), filePath},
+        {QStringLiteral("file_name"), fileName},
+        {QStringLiteral("file_size"), static_cast<double>(fileSize)},
+        {QStringLiteral("temp_id"), tempId}
+    };
+    postJson(QStringLiteral("/api/send-message"), body,
+             [this, receiverId, filePath, fileName, fileSize, caption, tempId](
+                 const QJsonObject& obj, bool ok, const QString& netErr) {
+        if (!ok && obj.isEmpty()) { emit chatError(QStringLiteral("send"), netErr); return; }
+        if (!obj.value(QStringLiteral("success")).toBool(false)) {
+            emit chatError(QStringLiteral("send"),
+                obj.value(QStringLiteral("message")).toString(QStringLiteral("Не удалось отправить")));
+            return;
+        }
+        ChatMessage m;
+        m.id          = obj.value(QStringLiteral("message_id")).toString();
+        m.senderId    = Session::instance().userId;
+        m.content     = caption;
+        m.messageType = QStringLiteral("file");
+        m.filePath    = obj.value(QStringLiteral("file_path")).toString(filePath);
+        m.fileName    = fileName;
+        m.fileSize    = fileSize;
+        m.time        = obj.value(QStringLiteral("time")).toString();
+        m.createdAt   = obj.value(QStringLiteral("created_at")).toString();
+        m.status      = QStringLiteral("sent");
+        m.sent        = true;
+        emit messageSent(m, receiverId, tempId);
+    });
+}
+
 void ApiClient::fetchFile(const QString& filePath) {
     QNetworkRequest req(QUrl(base_ + filePath));
     req.setRawHeader("Authorization", "Bearer " + Session::instance().token.toUtf8());

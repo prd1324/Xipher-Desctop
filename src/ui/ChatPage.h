@@ -11,6 +11,7 @@ class WsClient;
 class VoiceRecorder;
 class VoiceMessageWidget;
 class RecordingBar;
+class EmojiPicker;
 class QListWidget;
 class QLineEdit;
 class QPushButton;
@@ -58,6 +59,13 @@ private slots:
     void onVoiceUploaded(const QString& filePath, const QString& fileName, long long fileSize, const QString& tempId);
     void onFileFetched(const QString& filePath, const QByteArray& bytes);
 
+    // Эмодзи / вложения / таймер
+    void onEmojiClicked();
+    void onAttachClicked();
+    void onTimerClicked();
+    void pickAndSendFile();
+    void onFileUploaded(const QString& filePath, const QString& fileName, long long fileSize, const QString& tempId);
+
 private:
     void buildUi();
     void playVoice(const QString& serverPath);
@@ -89,7 +97,16 @@ private:
     QLineEdit*   composer_   = nullptr;
     QPushButton* sendBtn_    = nullptr;
     QPushButton* micBtn_     = nullptr;
+    QPushButton* emojiBtn_   = nullptr;
+    QPushButton* attachBtn_  = nullptr;
+    QPushButton* timerBtn_   = nullptr;
     RecordingBar* recBar_    = nullptr;
+    EmojiPicker*  emojiPicker_ = nullptr;
+    int           disappearTtl_ = 0;   // сек, 0 = выкл (пока UI-состояние)
+
+    // Файлы: отложенная отправка/открытие
+    QString pendingFileReceiver_;
+    QHash<QString, QString> pendingFileOpen_;   // серверный путь → имя для сохранения
 
     // Голос
     VoiceRecorder* recorder_ = nullptr;
