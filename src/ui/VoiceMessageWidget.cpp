@@ -4,8 +4,74 @@
 #include <QPainterPath>
 #include <QMouseEvent>
 #include <QHBoxLayout>
-#include <QPushButton>
+#include <QAbstractButton>
 #include <QLabel>
+
+// ── PlayPauseButton — круглая кнопка с векторной иконкой play/pause ───────────
+class PlayPauseButton : public QAbstractButton {
+public:
+    explicit PlayPauseButton(bool outgoing, QWidget* parent = nullptr)
+        : QAbstractButton(parent), outgoing_(outgoing) {
+        setCursor(Qt::PointingHandCursor);
+        setAttribute(Qt::WA_Hover, true);
+    }
+    void setPlaying(bool playing) { playing_ = playing; update(); }
+
+protected:
+    void enterEvent(QEnterEvent*) override { hover_ = true; update(); }
+    void leaveEvent(QEvent*) override { hover_ = false; update(); }
+
+    void paintEvent(QPaintEvent*) override {
+        QPainter p(this);
+        p.setRenderHint(QPainter::Antialiasing, true);
+        const QRectF r = rect().adjusted(1, 1, -1, -1);
+        const QPointF c = r.center();
+        const qreal s = qMin(r.width(), r.height());
+
+        // Фон-кружок
+        p.setPen(Qt::NoPen);
+        if (outgoing_) {
+            p.setBrush(hover_ ? QColor(0xF2, 0xEC, 0xFF) : QColor(0xFF, 0xFF, 0xFF));
+        } else {
+            QLinearGradient g(r.topLeft(), r.bottomRight());
+            g.setColorAt(0, hover_ ? QColor(0x9B, 0x72, 0xF8) : QColor(0x8B, 0x5C, 0xF6));
+            g.setColorAt(1, QColor(0x6D, 0x28, 0xD9));
+            p.setBrush(g);
+        }
+        p.drawEllipse(r);
+
+        // Иконка
+        const QColor fg = outgoing_ ? QColor(0x5B, 0x3F, 0xA6) : QColor(0xFF, 0xFF, 0xFF);
+        p.setBrush(fg);
+        p.setPen(Qt::NoPen);
+        if (playing_) {
+            // Две скруглённые палочки (pause)
+            const qreal bw = s * 0.12;
+            const qreal bh = s * 0.34;
+            const qreal gap = s * 0.10;
+            p.drawRoundedRect(QRectF(c.x() - gap - bw, c.y() - bh / 2, bw, bh), bw / 2, bw / 2);
+            p.drawRoundedRect(QRectF(c.x() + gap,      c.y() - bh / 2, bw, bh), bw / 2, bw / 2);
+        } else {
+            // Скруглённый треугольник (play), слегка смещён вправо для оптического центра
+            const qreal ts = s * 0.30;
+            QPainterPath tri;
+            tri.moveTo(c.x() - ts * 0.55 + s * 0.04, c.y() - ts);
+            tri.lineTo(c.x() + ts * 0.95 + s * 0.04, c.y());
+            tri.lineTo(c.x() - ts * 0.55 + s * 0.04, c.y() + ts);
+            tri.closeSubpath();
+            QPen pen(fg);
+            pen.setWidthF(s * 0.10);
+            pen.setJoinStyle(Qt::RoundJoin);
+            p.setPen(pen);
+            p.drawPath(tri);
+        }
+    }
+
+private:
+    bool outgoing_;
+    bool playing_ = false;
+    bool hover_ = false;
+};
 
 // ── Waveform ──────────────────────────────────────────────────────────────────
 
@@ -80,20 +146,8 @@ VoiceMessageWidget::VoiceMessageWidget(const QString& seed, bool outgoing, QWidg
     lay->setContentsMargins(0, 2, 0, 2);
     lay->setSpacing(10);
 
-    playBtn_ = new QPushButton(QStringLiteral("▶"), this);
-    playBtn_->setCursor(Qt::PointingHandCursor);
+    playBtn_ = new PlayPauseButton(outgoing_, this);
     playBtn_->setFixedSize(38, 38);
-    if (outgoing_) {
-        playBtn_->setStyleSheet(QStringLiteral(
-            "QPushButton{border:none;border-radius:19px;background:#FFFFFF;color:#5B3FA6;"
-            "font-size:14px;font-weight:700;}"
-            "QPushButton:hover{background:#F2ECFF;}"));
-    } else {
-        playBtn_->setStyleSheet(QStringLiteral(
-            "QPushButton{border:none;border-radius:19px;color:#FFFFFF;font-size:14px;font-weight:700;"
-            "background:qlineargradient(x1:0,y1:0,x2:1,y2:1,stop:0 #8B5CF6,stop:1 #6D28D9);}"
-            "QPushButton:hover{background:#9B72F8;}"));
-    }
 
     wave_ = new Waveform(seed, outgoing_, this);
 
@@ -105,13 +159,13 @@ VoiceMessageWidget::VoiceMessageWidget(const QString& seed, bool outgoing, QWidg
     lay->addWidget(wave_, 1);
     lay->addWidget(time_);
 
-    connect(playBtn_, &QPushButton::clicked, this, &VoiceMessageWidget::playPauseClicked);
+    connect(playBtn_, &QAbstractButton::clicked, this, &VoiceMessageWidget::playPauseClicked);
     connect(wave_, &Waveform::seek, this, &VoiceMessageWidget::seekRequested);
 }
 
 void VoiceMessageWidget::setPlaying(bool playing) {
     playing_ = playing;
-    playBtn_->setText(playing ? QStringLiteral("⏸") : QStringLiteral("▶"));
+    playBtn_->setPlaying(playing);
 }
 
 void VoiceMessageWidget::setProgress(qreal frac) {

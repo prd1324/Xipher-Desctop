@@ -2,8 +2,8 @@
 #include <QWidget>
 #include <QVector>
 
-class QPushButton;
 class QLabel;
+class PlayPauseButton;
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  Waveform — дорожка-«осциллограмма» голосового (как в Telegram Desktop):
@@ -48,9 +48,9 @@ signals:
 private:
     QString fmt(qint64 ms) const;
 
-    QPushButton* playBtn_;
-    Waveform*    wave_;
-    QLabel*      time_;
+    PlayPauseButton* playBtn_;
+    Waveform*        wave_;
+    QLabel*          time_;
     bool playing_ = false;
     bool outgoing_;
     qint64 totalMs_ = 0;
