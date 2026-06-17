@@ -26,12 +26,26 @@
 #include <QDir>
 #include <QFile>
 #include <QDateTime>
+#include <QRegularExpression>
 #include <algorithm>
 
 namespace {
 
 QString elide(const QString& s, const QFont& f, int px) {
     return QFontMetrics(f).elidedText(s.isEmpty() ? QString() : s, Qt::ElideRight, px);
+}
+
+// Подпись голосового с длительностью (хранится в content, т.к. сервер не отдаёт duration).
+QString voiceLabel(int secs) {
+    return QStringLiteral("🎤 %1:%2").arg(secs / 60).arg(secs % 60, 2, 10, QLatin1Char('0'));
+}
+
+// Достаёт секунды из подписи вида "🎤 m:ss" (0 — если нет).
+int parseVoiceSeconds(const QString& content) {
+    QRegularExpression re(QStringLiteral("(\\d+):(\\d{2})"));
+    auto m = re.match(content);
+    if (!m.hasMatch()) return 0;
+    return m.captured(1).toInt() * 60 + m.captured(2).toInt();
 }
 
 // Круглый аватар: буква на матовом фиолетовом градиенте.
@@ -458,6 +472,8 @@ void ChatPage::addBubble(const ChatMessage& msg) {
         auto* voice = new VoiceMessageWidget(seed, msg.sent, bubble);
         voice->setMinimumWidth(240);
         bubble->setMinimumWidth(280);
+        const int vsecs = parseVoiceSeconds(msg.content);   // длительность из подписи
+        if (vsecs > 0) voice->setTotalMs(qint64(vsecs) * 1000);
         bl->addWidget(voice);
         const QString path = msg.filePath;
         connect(voice, &VoiceMessageWidget::playPauseClicked, this,
@@ -603,6 +619,7 @@ void ChatPage::cancelRecording() {
 }
 
 void ChatPage::stopAndSendVoice() {
+    pendingVoiceSecs_ = recBar_->seconds();   // длительность записи
     recBar_->stop();
     composerStack_->setCurrentIndex(0);
     pendingVoiceReceiver_ = currentPeerId_;
@@ -650,6 +667,7 @@ void ChatPage::onVoiceRecorded(const QString& filePath, const QString& mimeType)
     m.status = QStringLiteral("sent");
     m.messageType = QStringLiteral("voice");
     m.filePath = filePath;   // локальный путь → playVoice сыграет напрямую
+    m.content = voiceLabel(pendingVoiceSecs_);   // длительность в подписи
     m.time = QTime::currentTime().toString(QStringLiteral("HH:mm"));
     if (pendingVoiceReceiver_ == currentPeerId_) {
         addBubble(m);
@@ -663,7 +681,7 @@ void ChatPage::onVoiceUploaded(const QString& filePath, const QString& fileName,
                                long long fileSize, const QString& tempId) {
     Q_UNUSED(tempId);
     if (pendingVoiceReceiver_.isEmpty()) return;
-    const QString caption = QStringLiteral("🎤 Голосовое сообщение");
+    const QString caption = voiceLabel(pendingVoiceSecs_);   // "🎤 m:ss"
     api_->sendVoice(pendingVoiceReceiver_, filePath, fileName, fileSize, caption, pendingVoiceTempId_);
     bumpChat(pendingVoiceReceiver_, caption,
              QTime::currentTime().toString(QStringLiteral("HH:mm")), false);

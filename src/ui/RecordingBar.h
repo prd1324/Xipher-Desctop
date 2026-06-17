@@ -18,6 +18,7 @@ public:
 
     void start();   // сброс таймера + запуск анимаций
     void stop();    // остановить анимации
+    int  seconds() const { return secs_; }   // длительность текущей записи
 
 signals:
     void cancelClicked();

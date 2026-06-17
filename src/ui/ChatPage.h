@@ -97,6 +97,7 @@ private:
     QAudioOutput*  audioOut_ = nullptr;
     QString        pendingVoiceTempId_;
     QString        pendingVoiceReceiver_;
+    int            pendingVoiceSecs_ = 0;
     QString        pendingPlayPath_;
     QHash<QString, QString> voiceCache_;   // серверный путь → локальный temp-файл
 
