@@ -5,6 +5,7 @@
 #include "ui/EmojiPicker.h"
 #include "ui/Icons.h"
 #include "ui/AvatarUtil.h"
+#include "ui/Checklist.h"
 #include "net/ApiClient.h"
 #include "net/WsClient.h"
 #include "net/Session.h"
@@ -19,6 +20,13 @@
 #include <QDate>
 #include <QLocale>
 #include <QPixmap>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QJsonArray>
+#include <QUuid>
+#include <QNetworkAccessManager>
+#include <QNetworkRequest>
+#include <QNetworkReply>
 
 #include <QHBoxLayout>
 #include <QVBoxLayout>
@@ -51,6 +59,21 @@ QString elide(const QString& s, const QFont& f, int px) {
 // Подпись голосового с длительностью (хранится в content, т.к. сервер не отдаёт duration).
 QString voiceLabel(int secs) {
     return QStringLiteral("🎤 %1:%2").arg(secs / 60).arg(secs % 60, 2, 10, QLatin1Char('0'));
+}
+
+QJsonObject parseChecklist(const QString& content) {
+    if (!content.startsWith(ChecklistProto::kPrefix)) return {};
+    const QString raw = content.mid(ChecklistProto::kPrefix.length()).trimmed();
+    return QJsonDocument::fromJson(raw.toUtf8()).object();
+}
+QJsonObject parseChecklistUpdate(const QString& content) {
+    if (!content.startsWith(ChecklistProto::kUpdatePrefix)) return {};
+    const QString raw = content.mid(ChecklistProto::kUpdatePrefix.length()).trimmed();
+    return QJsonDocument::fromJson(raw.toUtf8()).object();
+}
+bool isGeoContent(const QString& c) {
+    return c.startsWith(QStringLiteral("geo:")) || c.contains(QStringLiteral("yandex.")) ||
+           c.contains(QStringLiteral("maps?pt=")) || c.contains(QStringLiteral("maps?ll="));
 }
 
 // Человекочитаемый размер файла.
@@ -594,6 +617,8 @@ void ChatPage::clearMessages() {
     }
     msgLayout_->addStretch();
     shownIds_.clear();
+    checklistWidgets_.clear();
+    mergedChecklists_.clear();
 }
 
 void ChatPage::onMessagesLoaded(const QString& friendId, const QList<ChatMessage>& messages) {
@@ -619,6 +644,18 @@ void ChatPage::onMessagesLoaded(const QString& friendId, const QList<ChatMessage
 }
 
 void ChatPage::addBubble(const ChatMessage& msg) {
+    // Апдейт чек-листа — не рисуем бабблом, применяем к существующему виджету.
+    if (msg.content.startsWith(ChecklistProto::kUpdatePrefix)) {
+        const QJsonObject upd = parseChecklistUpdate(msg.content);
+        const QString clId = upd.value(QStringLiteral("checklistId")).toString();
+        // сохраняем накопленное состояние (на случай, если виджет ещё не создан)
+        QJsonObject merged = mergedChecklists_.value(clId);
+        if (!merged.isEmpty() || checklistWidgets_.contains(clId)) {
+            if (auto* w = checklistWidgets_.value(clId)) w->applyUpdate(upd);
+        }
+        return;
+    }
+
     auto* row = new QWidget(msgContainer_);
     row->setStyleSheet(QStringLiteral("background:transparent;"));
     auto* rl = new QHBoxLayout(row);
@@ -662,6 +699,51 @@ void ChatPage::addBubble(const ChatMessage& msg) {
         connect(voice, &VoiceMessageWidget::seekRequested, this, [this, voice](qreal frac) {
             if (activeVoice_ == voice && player_->duration() > 0)
                 player_->setPosition(qint64(frac * player_->duration()));
+        });
+    } else if (msg.content.startsWith(ChecklistProto::kPrefix)) {
+        // Чек-лист (как в вебе): [[XIPHER_CHECKLIST]] + JSON.
+        QJsonObject pl = parseChecklist(msg.content);
+        const QString clId = pl.value(QStringLiteral("id")).toString();
+        if (mergedChecklists_.contains(clId))   // применяем накопленные апдейты
+            pl = mergedChecklists_.value(clId);
+        const bool canMark = msg.sent || pl.value(QStringLiteral("othersCanMark")).toBool(true);
+        auto* cl = new ChecklistWidget(pl, msg.sent, canMark, bubble);
+        bubble->setMinimumWidth(300);
+        bl->addWidget(cl);
+        checklistWidgets_.insert(clId, cl);
+        const QString peer = currentPeerId_;
+        connect(cl, &ChecklistWidget::itemToggled, this, [this, clId, peer](const QString& itemId, bool done) {
+            QJsonObject upd{{QStringLiteral("checklistId"), clId},
+                            {QStringLiteral("updates"), QJsonArray{QJsonObject{
+                                {QStringLiteral("id"), itemId}, {QStringLiteral("done"), done}}}}};
+            const QString content = ChecklistProto::kUpdatePrefix +
+                QString::fromUtf8(QJsonDocument(upd).toJson(QJsonDocument::Compact));
+            api_->sendRaw(peer, content, QStringLiteral("text"),
+                          QStringLiteral("clu_%1").arg(++tempCounter_));
+        });
+    } else if (msg.messageType == QStringLiteral("location") ||
+               msg.messageType == QStringLiteral("live_location") || isGeoContent(msg.content)) {
+        // Геопозиция: кнопка-карточка, открывает карту в браузере.
+        auto* geo = new QPushButton(bubble);
+        geo->setCursor(Qt::PointingHandCursor);
+        geo->setIcon(Icons::icon(Icons::Location, 20,
+            msg.sent ? QColor(0xF0,0xEC,0xFA) : QColor(0x8B,0x5C,0xF6)));
+        geo->setIconSize(QSize(20, 20));
+        geo->setText(QStringLiteral("  Геопозиция\n  Открыть на карте"));
+        geo->setStyleSheet(QString(
+            "QPushButton{border:none;background:transparent;text-align:left;font-size:14px;color:%1;}"
+            "QPushButton:hover{text-decoration:underline;}")
+            .arg(msg.sent ? QStringLiteral("#F0ECFA") : QStringLiteral("#F3F1F8")));
+        bubble->setMinimumWidth(220);
+        bl->addWidget(geo);
+        const QString url = msg.content;
+        connect(geo, &QPushButton::clicked, this, [url]() {
+            QString u = url;
+            if (u.startsWith(QStringLiteral("geo:"))) {
+                const QString c = u.mid(4).split('?').first();
+                u = QStringLiteral("https://yandex.ru/maps/?text=") + c;
+            }
+            QDesktopServices::openUrl(QUrl(u));
         });
     } else if (msg.messageType == QStringLiteral("image") || msg.messageType == QStringLiteral("photo")) {
         // Фото: показываем картинку (локально или тянем с /files).
@@ -868,17 +950,17 @@ void ChatPage::onAttachClicked() {
     QMenu menu(this);
     QAction* fileAct = menu.addAction(Icons::icon(Icons::File, 18, mclr), QStringLiteral("Файл"));
     QAction* checklist = menu.addAction(Icons::icon(Icons::Checklist, 18, mclr),
-                                        QStringLiteral("Чек-лист (скоро)"));
-    checklist->setEnabled(false);
+                                        QStringLiteral("Чек-лист"));
     menu.addSeparator();
     QMenu* geo = menu.addMenu(QStringLiteral("Геопозиция"));
     geo->setIcon(Icons::icon(Icons::Location, 18, mclr));
-    QAction* geoSend = geo->addAction(QStringLiteral("Отправить (скоро)"));
+    QAction* geoSend = geo->addAction(QStringLiteral("Отправить"));
     QAction* geoLive = geo->addAction(QStringLiteral("Транслировать (Live, скоро)"));
-    geoSend->setEnabled(false);
     geoLive->setEnabled(false);
 
     connect(fileAct, &QAction::triggered, this, &ChatPage::pickAndSendFile);
+    connect(checklist, &QAction::triggered, this, &ChatPage::openChecklistDialog);
+    connect(geoSend, &QAction::triggered, this, &ChatPage::sendLocation);
     QPoint pos = attachBtn_->mapToGlobal(QPoint(0, 0));
     pos.setY(pos.y() - menu.sizeHint().height() - 6);   // открываем ВВЕРХ
     menu.exec(pos);
@@ -939,6 +1021,71 @@ void ChatPage::pickAndSendFile() {
     scrollToBottom();
 
     api_->uploadFile(bytes, base, tempId);
+}
+
+void ChatPage::openChecklistDialog() {
+    if (currentPeerId_.isEmpty()) return;
+    ChecklistDialog dlg(this);
+    if (dlg.exec() != QDialog::Accepted) return;
+    const QJsonObject payload = dlg.payload();
+    if (payload.isEmpty()) return;
+
+    const QString content = ChecklistProto::kPrefix +
+        QString::fromUtf8(QJsonDocument(payload).toJson(QJsonDocument::Compact));
+    const QString tempId = QStringLiteral("clk_%1").arg(++tempCounter_);
+    shownIds_.insert(tempId);
+
+    // Оптимистичный баббл.
+    ChatMessage m;
+    m.id = tempId; m.sent = true; m.status = QStringLiteral("sent");
+    m.messageType = QStringLiteral("text");
+    m.content = content;
+    m.time = QTime::currentTime().toString(QStringLiteral("HH:mm"));
+    addBubble(m);
+    scrollToBottom();
+
+    api_->sendRaw(currentPeerId_, content, QStringLiteral("text"), tempId);
+    bumpChat(currentPeerId_, QStringLiteral("Чек-лист"),
+             m.time, false);
+}
+
+void ChatPage::sendLocation() {
+    if (currentPeerId_.isEmpty()) return;
+    pendingLocReceiver_ = currentPeerId_;
+    if (!geoNam_) geoNam_ = new QNetworkAccessManager(this);
+    // На десктопе нет GPS — берём приблизительные координаты по IP (ip-api.com).
+    QNetworkReply* reply = geoNam_->get(QNetworkRequest(QUrl(
+        QStringLiteral("http://ip-api.com/json/?fields=status,lat,lon"))));
+    connect(reply, &QNetworkReply::finished, this, [this, reply]() {
+        reply->deleteLater();
+        double lat = 0, lon = 0;
+        bool ok = false;
+        if (reply->error() == QNetworkReply::NoError) {
+            const QJsonObject o = QJsonDocument::fromJson(reply->readAll()).object();
+            if (o.value(QStringLiteral("status")).toString() == QStringLiteral("success")) {
+                lat = o.value(QStringLiteral("lat")).toDouble();
+                lon = o.value(QStringLiteral("lon")).toDouble();
+                ok = true;
+            }
+        }
+        if (!ok || pendingLocReceiver_.isEmpty()) return;
+
+        const QString content = QStringLiteral("https://yandex.ru/maps/?pt=%1,%2&z=16&l=map")
+            .arg(lon, 0, 'f', 6).arg(lat, 0, 'f', 6);
+        const QString tempId = QStringLiteral("loc_%1").arg(++tempCounter_);
+        shownIds_.insert(tempId);
+
+        ChatMessage m;
+        m.id = tempId; m.sent = true; m.status = QStringLiteral("sent");
+        m.messageType = QStringLiteral("location");
+        m.content = content;
+        m.time = QTime::currentTime().toString(QStringLiteral("HH:mm"));
+        if (pendingLocReceiver_ == currentPeerId_) { addBubble(m); scrollToBottom(); }
+
+        api_->sendRaw(pendingLocReceiver_, content, QStringLiteral("location"), tempId);
+        bumpChat(pendingLocReceiver_, QStringLiteral("Геопозиция"), m.time, false);
+        pendingLocReceiver_.clear();
+    });
 }
 
 void ChatPage::onFileUploaded(const QString& filePath, const QString& fileName,

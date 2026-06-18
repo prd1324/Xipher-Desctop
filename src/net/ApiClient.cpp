@@ -211,6 +211,35 @@ void ApiClient::sendMessage(const QString& receiverId, const QString& content, c
     });
 }
 
+void ApiClient::sendRaw(const QString& receiverId, const QString& content,
+                        const QString& messageType, const QString& tempId) {
+    QJsonObject body{{QStringLiteral("token"), Session::instance().token},
+                     {QStringLiteral("receiver_id"), receiverId},
+                     {QStringLiteral("content"), content},
+                     {QStringLiteral("message_type"), messageType},
+                     {QStringLiteral("temp_id"), tempId}};
+    postJson(QStringLiteral("/api/send-message"), body,
+             [this, receiverId, content, messageType, tempId](
+                 const QJsonObject& obj, bool ok, const QString& netErr) {
+        if (!ok && obj.isEmpty()) { emit chatError(QStringLiteral("send"), netErr); return; }
+        if (!obj.value(QStringLiteral("success")).toBool(false)) {
+            emit chatError(QStringLiteral("send"),
+                obj.value(QStringLiteral("message")).toString(QStringLiteral("Не удалось отправить")));
+            return;
+        }
+        ChatMessage m;
+        m.id          = obj.value(QStringLiteral("message_id")).toString();
+        m.senderId    = Session::instance().userId;
+        m.content     = obj.value(QStringLiteral("content")).toString(content);
+        m.messageType = messageType;
+        m.time        = obj.value(QStringLiteral("time")).toString();
+        m.createdAt   = obj.value(QStringLiteral("created_at")).toString();
+        m.status      = QStringLiteral("sent");
+        m.sent        = true;
+        emit messageSent(m, receiverId, tempId);
+    });
+}
+
 // ── Люди и друзья ─────────────────────────────────────────────────────────────
 
 void ApiClient::searchUsers(const QString& query) {

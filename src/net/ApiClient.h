@@ -42,6 +42,9 @@ public:
     void getChats();
     void getMessages(const QString& friendId);
     void sendMessage(const QString& receiverId, const QString& content, const QString& tempId);
+    // Универсальная отправка с произвольным message_type (location/checklist/…).
+    void sendRaw(const QString& receiverId, const QString& content,
+                 const QString& messageType, const QString& tempId);
 
     // Голосовые / файлы.
     void uploadVoice(const QByteArray& audioBytes, const QString& mimeType, const QString& tempId);

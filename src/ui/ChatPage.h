@@ -4,6 +4,7 @@
 #include <QSet>
 #include <QHash>
 #include <QPointer>
+#include <QJsonObject>
 
 #include "net/Models.h"
 
@@ -13,6 +14,8 @@ class VoiceRecorder;
 class VoiceMessageWidget;
 class RecordingBar;
 class EmojiPicker;
+class ChecklistWidget;
+class QNetworkAccessManager;
 class QListWidget;
 class QLineEdit;
 class QPushButton;
@@ -65,6 +68,8 @@ private slots:
     void onAttachClicked();
     void onTimerClicked();
     void pickAndSendFile();
+    void openChecklistDialog();
+    void sendLocation();
     void onFileUploaded(const QString& filePath, const QString& fileName, long long fileSize, const QString& tempId);
 
 private:
@@ -108,6 +113,12 @@ private:
     // Файлы: отложенная отправка/открытие
     QString pendingFileReceiver_;
     QHash<QString, QString> pendingFileOpen_;   // серверный путь → имя для сохранения
+
+    // Чек-листы (live-обновления) + гео
+    QHash<QString, ChecklistWidget*> checklistWidgets_;   // id → виджет
+    QHash<QString, QJsonObject>      mergedChecklists_;   // id → склеенное состояние
+    QString                          pendingLocReceiver_;
+    QNetworkAccessManager*           geoNam_ = nullptr;
 
     // Голос
     VoiceRecorder* recorder_ = nullptr;
