@@ -91,17 +91,26 @@ SettingsDialog::SettingsDialog(ApiClient* api, QWidget* parent)
     card()->setStyleSheet(QStringLiteral(R"QSS(
 #modalCard{background:#17151E;border:1px solid rgba(255,255,255,0.08);border-radius:18px;}
 QLabel{color:#F3F1F8;}
-#settingsTitle{font-size:18px;font-weight:800;color:#F3F1F8;}
+#settingsHeader{
+  background:qlineargradient(x1:0,y1:0,x2:1,y2:0,stop:0 #6D28D9,stop:0.55 #8B5CF6,stop:1 #B06CF0);
+  border-top-left-radius:18px;border-top-right-radius:18px;}
+#settingsTitle{font-size:18px;font-weight:800;color:#FFFFFF;}
+#closeBtn{background:rgba(255,255,255,0.16);border:none;border-radius:16px;color:#FFFFFF;font-size:16px;font-weight:700;}
+#closeBtn:hover{background:rgba(255,255,255,0.30);}
+#navWrap{background:#141019;border-bottom-left-radius:18px;}
 #settingsNav{background:transparent;border:none;outline:none;}
-#settingsNav::item{color:#ACA6BD;padding:10px 12px;border-radius:9px;margin:1px 4px;}
+#settingsNav::item{color:#ACA6BD;padding:9px 10px;border-radius:10px;margin:2px 6px;}
 #settingsNav::item:hover{background:#221F2C;color:#F3F1F8;}
-#settingsNav::item:selected{background:rgba(139,92,246,0.18);color:#F3F1F8;}
+#settingsNav::item:selected{background:rgba(139,92,246,0.20);color:#FFFFFF;}
 #card{background:#1A1822;border:1px solid rgba(255,255,255,0.06);border-radius:14px;}
-#cardTitle{font-size:13px;font-weight:700;color:#8B5CF6;}
+#cardTitle{font-size:12px;font-weight:800;color:#9B82C9;letter-spacing:1px;}
 #rowLabel{font-size:14px;color:#CFC9DC;}
 #hint{font-size:12px;color:#726C82;}
-#heroName{font-size:18px;font-weight:800;color:#F3F1F8;}
-#heroUser{font-size:13px;color:#726C82;}
+#heroBanner{border-radius:16px;
+  background:qlineargradient(x1:0,y1:0,x2:1,y2:1,stop:0 #2A2140,stop:0.5 #3A2A5E,stop:1 #221A33);
+  border:1px solid rgba(139,92,246,0.25);}
+#heroName{font-size:19px;font-weight:800;color:#FFFFFF;}
+#heroUser{font-size:13px;color:#C9B6FF;}
 QLineEdit,QPlainTextEdit,QComboBox,QSpinBox,QTimeEdit{
   background:#131218;border:1px solid rgba(255,255,255,0.10);border-radius:10px;
   min-height:34px;padding:0 10px;color:#F3F1F8;selection-background-color:#8B5CF6;}
@@ -141,10 +150,13 @@ void SettingsDialog::buildChrome() {
     lay->setContentsMargins(0, 0, 0, 0);
     lay->setSpacing(0);
 
-    // Шапка.
+    // Шапка — градиентная плашка под акцент, скруглённая сверху как карточка.
     auto* head = new QWidget();
+    head->setObjectName(QStringLiteral("settingsHeader"));
+    head->setAttribute(Qt::WA_StyledBackground, true);
+    head->setFixedHeight(56);
     auto* hh = new QHBoxLayout(head);
-    hh->setContentsMargins(22, 16, 16, 12);
+    hh->setContentsMargins(22, 0, 14, 0);
     auto* title = new QLabel(QStringLiteral("Настройки"));
     title->setObjectName(QStringLiteral("settingsTitle"));
     auto* close = new QPushButton(QStringLiteral("✕"));
@@ -157,43 +169,50 @@ void SettingsDialog::buildChrome() {
     hh->addWidget(close);
     lay->addWidget(head);
 
-    // Тело: навигация + стек.
+    // Тело: навигация (в своей подложке) + стек.
     auto* bodyW = new QWidget();
     auto* bh = new QHBoxLayout(bodyW);
-    bh->setContentsMargins(8, 0, 12, 14);
-    bh->setSpacing(8);
+    bh->setContentsMargins(0, 0, 10, 12);
+    bh->setSpacing(6);
 
+    auto* navWrap = new QWidget();
+    navWrap->setObjectName(QStringLiteral("navWrap"));
+    navWrap->setAttribute(Qt::WA_StyledBackground, true);
+    navWrap->setFixedWidth(214);
+    auto* nwl = new QVBoxLayout(navWrap);
+    nwl->setContentsMargins(2, 8, 2, 8);
     nav_ = new QListWidget();
     nav_->setObjectName(QStringLiteral("settingsNav"));
-    nav_->setFixedWidth(210);
     nav_->setIconSize(QSize(18, 18));
     nav_->setFocusPolicy(Qt::NoFocus);
+    nav_->setVerticalScrollMode(QAbstractItemView::ScrollPerPixel);
+    nwl->addWidget(nav_);
 
     stack_ = new QStackedWidget();
 
-    bh->addWidget(nav_);
+    bh->addWidget(navWrap);
     bh->addWidget(stack_, 1);
     lay->addWidget(bodyW, 1);
 
     connect(nav_, &QListWidget::currentRowChanged, stack_, &QStackedWidget::setCurrentIndex);
 
-    addSection(QStringLiteral("Мой аккаунт"),   Icons::User,     buildAccountPage());
-    addSection(QStringLiteral("Уведомления"),    Icons::Bell,     buildNotificationsPage());
-    addSection(QStringLiteral("Приватность"),    Icons::Shield,   buildPrivacyPage());
-    addSection(QStringLiteral("Звонки"),         Icons::Phone,    buildCallsPage());
-    addSection(QStringLiteral("Активные сеансы"),Icons::Device,   buildSessionsPage());
-    addSection(QStringLiteral("Заблокированные"),Icons::Block,    buildBlockedPage());
-    addSection(QStringLiteral("Язык"),           Icons::Globe,    buildLanguagePage());
-    addSection(QStringLiteral("Email для входа"), Icons::Lock,    buildEmailPage());
-    addSection(QStringLiteral("Premium"),        Icons::Star,     buildPremiumPage());
-    addSection(QStringLiteral("О приложении"),   Icons::Gear,     buildAboutPage());
+    addSection(QStringLiteral("Мой аккаунт"),    Icons::User,   QColor(0x8B,0x5C,0xF6), buildAccountPage());
+    addSection(QStringLiteral("Уведомления"),    Icons::Bell,   QColor(0xF0,0x9A,0x3E), buildNotificationsPage());
+    addSection(QStringLiteral("Приватность"),    Icons::Shield, QColor(0x46,0xB9,0x8A), buildPrivacyPage());
+    addSection(QStringLiteral("Звонки"),         Icons::Phone,  QColor(0x4C,0x9A,0xF5), buildCallsPage());
+    addSection(QStringLiteral("Активные сеансы"),Icons::Device, QColor(0x5E,0xC8,0xD8), buildSessionsPage());
+    addSection(QStringLiteral("Заблокированные"),Icons::Block,  QColor(0xE5,0x68,0x7A), buildBlockedPage());
+    addSection(QStringLiteral("Язык"),           Icons::Globe,  QColor(0x7E,0x8B,0xF0), buildLanguagePage());
+    addSection(QStringLiteral("Email для входа"), Icons::Lock,  QColor(0xC0,0x86,0x4E), buildEmailPage());
+    addSection(QStringLiteral("Premium"),        Icons::Star,   QColor(0xF0,0xC8,0x4C), buildPremiumPage());
+    addSection(QStringLiteral("О приложении"),   Icons::Gear,   QColor(0x9A,0x93,0xAD), buildAboutPage());
 
     nav_->setCurrentRow(0);
 }
 
-void SettingsDialog::addSection(const QString& title, int iconKind, QWidget* page) {
-    auto* item = new QListWidgetItem(
-        Icons::icon(Icons::Kind(iconKind), 18, QColor(0xAC, 0xA6, 0xBD)), title);
+void SettingsDialog::addSection(const QString& title, int iconKind,
+                                const QColor& iconColor, QWidget* page) {
+    auto* item = new QListWidgetItem(Icons::icon(Icons::Kind(iconKind), 18, iconColor), title);
     nav_->addItem(item);
     stack_->addWidget(scrollPage(page));
 }
@@ -205,18 +224,21 @@ QWidget* SettingsDialog::buildAccountPage() {
     v->setContentsMargins(12, 4, 12, 12);
     v->setSpacing(14);
 
-    // Герой.
-    auto* hero = new QWidget();
+    // Герой — градиентный баннер с аватаром (как обложка профиля в Telegram).
+    auto* hero = new QFrame();
+    hero->setObjectName(QStringLiteral("heroBanner"));
     auto* hl = new QHBoxLayout(hero);
-    hl->setContentsMargins(4, 4, 4, 4);
+    hl->setContentsMargins(18, 16, 18, 16);
     hl->setSpacing(16);
     avatar_ = new QLabel();
     avatar_->setFixedSize(76, 76);
     Avatar::setRound(avatar_, QString(), Session::instance().username, 76);
-    auto* camBtn = new QPushButton();
-    camBtn->setObjectName(QStringLiteral("ghostBtn"));
-    camBtn->setText(QStringLiteral("Сменить фото"));
+    auto* camBtn = new QPushButton(QStringLiteral("Сменить фото"));
     camBtn->setCursor(Qt::PointingHandCursor);
+    camBtn->setStyleSheet(QStringLiteral(
+        "QPushButton{background:rgba(255,255,255,0.14);color:#fff;border:none;"
+        "border-radius:9px;min-height:30px;padding:0 14px;font-size:12px;font-weight:600;}"
+        "QPushButton:hover{background:rgba(255,255,255,0.24);}"));
     connect(camBtn, &QPushButton::clicked, this, [this]() {
         const QString fn = QFileDialog::getOpenFileName(this, QStringLiteral("Выберите фото"),
             QString(), QStringLiteral("Изображения (*.jpg *.jpeg *.png *.gif)"));

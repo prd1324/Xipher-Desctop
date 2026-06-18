@@ -3,6 +3,7 @@
 #include "net/Models.h"
 
 #include <QList>
+#include <QColor>
 
 class ApiClient;
 class QListWidget;
@@ -26,7 +27,7 @@ public:
 
 private:
     void buildChrome();
-    void addSection(const QString& title, int iconKind, QWidget* page);
+    void addSection(const QString& title, int iconKind, const QColor& iconColor, QWidget* page);
 
     QWidget* buildAccountPage();
     QWidget* buildNotificationsPage();
