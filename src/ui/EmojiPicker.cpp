@@ -1,4 +1,5 @@
 #include "ui/EmojiPicker.h"
+#include "ui/AnimatedEmojiLabel.h"
 
 #include <QVBoxLayout>
 #include <QHBoxLayout>
@@ -6,98 +7,8 @@
 #include <QScrollArea>
 #include <QPushButton>
 #include <QScrollBar>
-#include <QLabel>
-#include <QMovie>
-#include <QMouseEvent>
-#include <QEnterEvent>
-#include <QNetworkAccessManager>
-#include <QNetworkRequest>
-#include <QNetworkReply>
-#include <QStandardPaths>
-#include <QDir>
-#include <QFile>
-#include <functional>
 
 namespace {
-
-// Раскодировать codepoint(ы) "1f600" / "1f468-200d-1f4bb" → строку-эмодзи.
-QString decodeCp(const QString& cp) {
-    QString out;
-    for (const QString& part : cp.split('-')) {
-        bool ok = false;
-        char32_t v = part.toUInt(&ok, 16);
-        if (ok) out += QString::fromUcs4(&v, 1);
-    }
-    return out;
-}
-
-// Загрузчик GIF-анимаций (Google Noto Animated Emoji, Apache-2.0) с дисковым кэшем.
-struct EmojiLoader {
-    QNetworkAccessManager nam;
-    QString dir;
-    EmojiLoader() {
-        dir = QStandardPaths::writableLocation(QStandardPaths::CacheLocation);
-        if (dir.isEmpty()) dir = QDir::tempPath();
-        dir += QStringLiteral("/xipher_emoji");
-        QDir().mkpath(dir);
-    }
-    void fetch(const QString& cp, std::function<void(QString)> cb) {
-        const QString local = dir + QStringLiteral("/") + cp + QStringLiteral(".gif");
-        if (QFile::exists(local)) { cb(local); return; }
-        const QString url = QStringLiteral(
-            "https://fonts.gstatic.com/s/e/notoemoji/latest/%1/512.gif").arg(cp);
-        QNetworkReply* r = nam.get(QNetworkRequest(QUrl(url)));
-        QObject::connect(r, &QNetworkReply::finished, r, [r, local, cb]() {
-            r->deleteLater();
-            if (r->error() != QNetworkReply::NoError) return;
-            const QByteArray data = r->readAll();
-            if (data.isEmpty()) return;
-            QFile f(local);
-            if (f.open(QIODevice::WriteOnly)) { f.write(data); f.close(); cb(local); }
-        });
-    }
-};
-EmojiLoader& loader() { static EmojiLoader l; return l; }
-
-// Ячейка эмодзи: статичный символ; по наведению подгружает и крутит GIF.
-class AnimatedEmoji : public QLabel {
-public:
-    AnimatedEmoji(const QString& cp, int size, std::function<void(const QString&)> onClick, QWidget* parent)
-        : QLabel(parent), cp_(cp), size_(size), onClick_(std::move(onClick)) {
-        ch_ = decodeCp(cp);
-        setFixedSize(size_ + 8, size_ + 8);
-        setAlignment(Qt::AlignCenter);
-        setCursor(Qt::PointingHandCursor);
-        QFont f(QStringLiteral("Segoe UI Emoji"));
-        f.setPixelSize(int(size_ * 0.82));
-        setFont(f);
-        setText(ch_);
-        setStyleSheet(QStringLiteral(
-            "QLabel{border-radius:8px;} QLabel:hover{background:rgba(255,255,255,0.10);}"));
-    }
-protected:
-    void enterEvent(QEnterEvent*) override {
-        if (movie_) { movie_->start(); return; }
-        loader().fetch(cp_, [this](const QString& path) {
-            if (!underMouse() || movie_) return;
-            movie_ = new QMovie(path, QByteArray(), this);
-            if (!movie_->isValid()) { movie_->deleteLater(); movie_ = nullptr; return; }
-            movie_->setScaledSize(QSize(size_, size_));
-            setMovie(movie_);
-            movie_->start();
-        });
-    }
-    void leaveEvent(QEvent*) override {
-        if (movie_) { movie_->stop(); movie_->deleteLater(); movie_ = nullptr; }
-        setText(ch_);
-    }
-    void mouseReleaseEvent(QMouseEvent*) override { if (onClick_) onClick_(ch_); }
-private:
-    QString cp_, ch_;
-    int size_;
-    QMovie* movie_ = nullptr;
-    std::function<void(const QString&)> onClick_;
-};
 
 // ── Категории (codepoints Noto). Большой набор. ──────────────────────────────
 const char* kFaces =
@@ -222,8 +133,8 @@ void EmojiPicker::showCategory(int index) {
     const QStringList& list = categories_[index];
     const int cols = 8;
     for (int i = 0; i < list.size(); ++i) {
-        auto* cell = new AnimatedEmoji(list[i], 32,
-            [this](const QString& ch) { emit emojiPicked(ch); }, grid_);
+        auto* cell = new AnimatedEmojiLabel(list[i], 32, /*autoplay*/ false, grid_);
+        cell->setOnClick([this](const QString& ch) { emit emojiPicked(ch); });
         g->addWidget(cell, i / cols, i % cols);
     }
     scroll_->verticalScrollBar()->setValue(0);

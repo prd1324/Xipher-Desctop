@@ -8,6 +8,7 @@
 #include "ui/Checklist.h"
 #include "ui/ModalOverlay.h"
 #include "ui/EmptyChatGreeting.h"
+#include "ui/AnimatedEmojiLabel.h"
 #include "net/ApiClient.h"
 #include "net/WsClient.h"
 #include "net/Session.h"
@@ -23,6 +24,7 @@
 #include <QDate>
 #include <QLocale>
 #include <QPixmap>
+#include <QTextBoundaryFinder>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonArray>
@@ -62,6 +64,39 @@ QString elide(const QString& s, const QFont& f, int px) {
 // Подпись голосового с длительностью (хранится в content, т.к. сервер не отдаёт duration).
 QString voiceLabel(int secs) {
     return QStringLiteral("🎤 %1:%2").arg(secs / 60).arg(secs % 60, 2, 10, QLatin1Char('0'));
+}
+
+// Является ли codepoint эмодзи (для «крупных эмодзи», как в Telegram).
+bool isEmojiCp(char32_t c) {
+    return (c >= 0x1F000 && c <= 0x1FAFF) ||
+           (c >= 0x2600  && c <= 0x27BF)  ||
+           (c >= 0x2300  && c <= 0x23FF)  ||
+           (c >= 0x2B00  && c <= 0x2BFF)  ||
+           (c >= 0x1F1E6 && c <= 0x1F1FF) ||
+           c == 0x2934 || c == 0x2935 || c == 0x24C2 ||
+           c == 0x3030 || c == 0x303D || c == 0x3297 || c == 0x3299;
+}
+
+// Если сообщение — только эмодзи (1-3), вернуть их кластеры; иначе пусто.
+QStringList emojiOnlyClusters(const QString& content) {
+    const QString s = content.trimmed();
+    if (s.isEmpty()) return {};
+    QStringList clusters;
+    QTextBoundaryFinder bf(QTextBoundaryFinder::Grapheme, s);
+    int pos = 0;
+    while (true) {
+        const int next = bf.toNextBoundary();
+        if (next == -1) break;
+        if (next <= pos) continue;
+        const QString cl = s.mid(pos, next - pos);
+        pos = next;
+        if (cl.trimmed().isEmpty()) continue;
+        const QList<uint> u = cl.toUcs4();
+        if (u.isEmpty() || !isEmojiCp(static_cast<char32_t>(u.first()))) return {};
+        clusters << cl;
+        if (clusters.size() > 3) return {};
+    }
+    return clusters;
 }
 
 QJsonObject parseChecklist(const QString& content) {
@@ -827,6 +862,22 @@ void ChatPage::addBubble(const ChatMessage& msg) {
             pendingFileOpen_.insert(path, name);
             api_->fetchFile(path);
         });
+    } else if (QStringList big = emojiOnlyClusters(msg.content); !big.isEmpty()) {
+        // Только эмодзи (1-3) → крупно и анимированно, без баббла (как в Telegram).
+        bubble->setStyleSheet(QStringLiteral("background:transparent;"));
+        const int sz = big.size() == 1 ? 96 : (big.size() == 2 ? 64 : 52);
+        auto* erow = new QWidget(bubble);
+        erow->setStyleSheet(QStringLiteral("background:transparent;"));
+        auto* el = new QHBoxLayout(erow);
+        el->setContentsMargins(0, 0, 0, 0);
+        el->setSpacing(4);
+        if (msg.sent) el->addStretch();
+        for (const QString& e : big) {
+            auto* a = new AnimatedEmojiLabel(AnimatedEmojiLabel::emojiToCodepoints(e), sz, true, erow);
+            el->addWidget(a);
+        }
+        if (!msg.sent) el->addStretch();
+        bl->addWidget(erow);
     } else {
         auto* text = new QLabel(msg.content, bubble);
         text->setWordWrap(true);

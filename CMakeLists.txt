@@ -36,6 +36,7 @@ set(SOURCES
     src/ui/Checklist.cpp
     src/ui/ModalOverlay.cpp
     src/ui/EmptyChatGreeting.cpp
+    src/ui/AnimatedEmojiLabel.cpp
 )
 
 set(HEADERS
@@ -60,6 +61,7 @@ set(HEADERS
     src/ui/Checklist.h
     src/ui/ModalOverlay.h
     src/ui/EmptyChatGreeting.h
+    src/ui/AnimatedEmojiLabel.h
 )
 
 qt_add_executable(Xipher
