@@ -52,8 +52,8 @@ CallEngine* CallController::createEngine() {
         connected_ = true;
         if (overlay_) { overlay_->setStatus(QStringLiteral("00:00")); overlay_->startCallTimer(); }
     });
-    connect(e, &CallEngine::ended, this, [this]() { cleanup(); });
-    connect(e, &CallEngine::failed, this, [this](const QString&) { cleanup(); });
+    connect(e, &CallEngine::ended, this, [this]() { qInfo() << "[call] engine ended"; cleanup(); });
+    connect(e, &CallEngine::failed, this, [this](const QString& r) { qWarning() << "[call] engine FAILED:" << r; cleanup(); });
     return e;
 }
 

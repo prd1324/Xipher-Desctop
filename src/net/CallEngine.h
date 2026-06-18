@@ -40,7 +40,8 @@ signals:
 
 private:
     void createPeerConnection();
-    void setupAudioTrack();
+    void addLocalAudioTrack();                                   // для звонящего (offer)
+    void configureTrack(std::shared_ptr<rtc::Track> track);      // навесить Opus-пакетайзер/приём
     void startAudioIo();
     void stopAudioIo();
     void onEncodedFrameReady();

@@ -54,15 +54,22 @@ void CallEngine::createPeerConnection() {
 
     pc_->onLocalDescription([this](rtc::Description desc) {
         const QString sdp = QString::fromStdString(std::string(desc));
+        qInfo() << "[call] local description type" << QString::fromStdString(desc.typeString()) << "len" << sdp.size();
         if (desc.type() == rtc::Description::Type::Offer) emit localOffer(sdp);
         else if (desc.type() == rtc::Description::Type::Answer) emit localAnswer(sdp);
     });
     pc_->onLocalCandidate([this](rtc::Candidate cand) {
+        qInfo() << "[call] local candidate";
         emit localCandidate(QString::fromStdString(std::string(cand)),
                             QString::fromStdString(cand.mid()));
     });
     pc_->onGatheringStateChange([](rtc::PeerConnection::GatheringState s) {
         qInfo() << "[call] gathering state" << int(s);
+    });
+    // Отвечающий получает аудио-трек из offer'а здесь (его нельзя добавлять заранее).
+    pc_->onTrack([this](std::shared_ptr<rtc::Track> t) {
+        qInfo() << "[call] onTrack";
+        if (!track_) configureTrack(t);
     });
     pc_->onStateChange([this](rtc::PeerConnection::State state) {
         qInfo() << "[call] pc state" << int(state);
@@ -77,13 +84,15 @@ void CallEngine::createPeerConnection() {
     });
 }
 
-void CallEngine::setupAudioTrack() {
+void CallEngine::addLocalAudioTrack() {
     rtc::Description::Audio media("audio", rtc::Description::Direction::SendRecv);
     media.addOpusCodec(kPayloadType);
     media.setBitrate(24);
+    configureTrack(pc_->addTrack(media));
+}
 
-    track_ = pc_->addTrack(media);
-
+void CallEngine::configureTrack(std::shared_ptr<rtc::Track> track) {
+    track_ = track;
     rtpConfig_ = std::make_shared<rtc::RtpPacketizationConfig>(
         12345678u, "xipher", kPayloadType, 48000u);
     auto packetizer = std::make_shared<rtc::OpusRtpPacketizer>(rtpConfig_);
@@ -105,18 +114,19 @@ void CallEngine::setupAudioTrack() {
 void CallEngine::startAsCaller() {
     caller_ = true;
     createPeerConnection();
-    setupAudioTrack();
+    addLocalAudioTrack();
     pc_->setLocalDescription();   // → onLocalDescription(offer)
 }
 
 void CallEngine::startAsCallee(const QString& remoteOffer) {
     caller_ = false;
     createPeerConnection();
-    setupAudioTrack();
+    // Трек НЕ добавляем заранее — он придёт из offer через onTrack.
     try {
         pc_->setRemoteDescription(rtc::Description(remoteOffer.toStdString(), "offer"));
         pc_->setLocalDescription();   // → onLocalDescription(answer)
     } catch (const std::exception& e) {
+        qWarning() << "[call] setRemoteDescription(offer) FAILED:" << e.what();
         emit failed(QString::fromUtf8(e.what()));
     }
 }
@@ -124,13 +134,16 @@ void CallEngine::startAsCallee(const QString& remoteOffer) {
 void CallEngine::setRemoteAnswer(const QString& sdp) {
     if (!pc_) return;
     try { pc_->setRemoteDescription(rtc::Description(sdp.toStdString(), "answer")); }
-    catch (const std::exception& e) { emit failed(QString::fromUtf8(e.what())); }
+    catch (const std::exception& e) {
+        qWarning() << "[call] setRemoteDescription(answer) FAILED:" << e.what();
+        emit failed(QString::fromUtf8(e.what()));
+    }
 }
 
 void CallEngine::addRemoteCandidate(const QString& cand, const QString& mid) {
     if (!pc_) return;
     try { pc_->addRemoteCandidate(rtc::Candidate(cand.toStdString(), mid.toStdString())); }
-    catch (...) {}
+    catch (const std::exception& e) { qWarning() << "[call] addRemoteCandidate failed:" << e.what(); }
 }
 
 void CallEngine::setMuted(bool muted) { muted_ = muted; }
