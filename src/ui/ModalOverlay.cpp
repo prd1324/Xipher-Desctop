@@ -1,6 +1,7 @@
 #include "ui/ModalOverlay.h"
 
 #include <QVBoxLayout>
+#include <QHBoxLayout>
 #include <QPainter>
 #include <QMouseEvent>
 #include <QKeyEvent>
@@ -14,6 +15,7 @@ ModalOverlay::ModalOverlay(QWidget* parent, int cardWidth)
 
     card_ = new QWidget(this);
     card_->setObjectName(QStringLiteral("modalCard"));
+    card_->setFixedWidth(cardWidth_);
     card_->setStyleSheet(QStringLiteral(
         "#modalCard{background:#17151E;border:1px solid rgba(255,255,255,0.08);border-radius:18px;}"));
     auto* shadow = new QGraphicsDropShadowEffect(card_);
@@ -26,16 +28,23 @@ ModalOverlay::ModalOverlay(QWidget* parent, int cardWidth)
     cardLayout_->setContentsMargins(22, 20, 22, 20);
     cardLayout_->setSpacing(12);
 
+    // Центрируем карточку через layout — она авто-растёт под контент (пункты и т.п.).
+    auto* root = new QVBoxLayout(this);
+    root->setContentsMargins(20, 20, 20, 20);
+    root->addStretch();
+    auto* row = new QHBoxLayout();
+    row->addStretch();
+    row->addWidget(card_);
+    row->addStretch();
+    root->addLayout(row);
+    root->addStretch();
+
     if (parent) parent->installEventFilter(this);   // следим за ресайзом окна
     setGeometry(parent ? parent->rect() : QRect());
 }
 
 void ModalOverlay::relayout() {
     if (parentWidget()) setGeometry(parentWidget()->rect());
-    card_->adjustSize();
-    int w = qMin(cardWidth_, width() - 40);
-    card_->setFixedWidth(w);
-    card_->move((width() - w) / 2, (height() - card_->height()) / 2);
 }
 
 bool ModalOverlay::eventFilter(QObject* obj, QEvent* e) {
@@ -69,14 +78,6 @@ void ModalOverlay::showAnimated() {
     fade->setStartValue(0.0);
     fade->setEndValue(1.0);
     fade->start(QAbstractAnimation::DeleteWhenStopped);
-
-    const QPoint to = card_->pos();
-    auto* slide = new QPropertyAnimation(card_, "pos", this);
-    slide->setDuration(200);
-    slide->setStartValue(QPoint(to.x(), to.y() + 18));
-    slide->setEndValue(to);
-    slide->setEasingCurve(QEasingCurve::OutCubic);
-    slide->start(QAbstractAnimation::DeleteWhenStopped);
 }
 
 void ModalOverlay::closeAnimated() {
