@@ -260,6 +260,11 @@ ChatPage::ChatPage(ApiClient* api, WsClient* ws, QWidget* parent)
     connect(api_, &ApiClient::messageSent,     this, &ChatPage::onMessageSent);
     connect(api_, &ApiClient::messageDeleted,  this, [this](bool ok){ if (ok) reloadCurrentMessages(); });
     connect(ws_,  &WsClient::newMessage,       this, &ChatPage::onWsMessage);
+    connect(ws_,  &WsClient::peerMessage, this, [this](const QString& chatId) {
+        if (chatId == currentPeerId_ &&
+            (currentKind_ == ChatKind::Group || currentKind_ == ChatKind::Channel))
+            reloadCurrentMessages();
+    });
     connect(api_, &ApiClient::voiceUploaded,   this, &ChatPage::onVoiceUploaded);
     connect(api_, &ApiClient::fileFetched,     this, &ChatPage::onFileFetched);
     connect(recorder_, &VoiceRecorder::recordingFinished, this, &ChatPage::onVoiceRecorded);

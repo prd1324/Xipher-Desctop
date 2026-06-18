@@ -32,6 +32,8 @@ public:
 signals:
     // Пришло новое сообщение. peerId — id чата с моей точки зрения (собеседник).
     void newMessage(const QString& peerId, const ChatMessage& msg, const QString& tempId);
+    // Новое сообщение в группе/канале (без тела) — id чата; нужно перезагрузить историю.
+    void peerMessage(const QString& chatId);
     void connectedChanged(bool connected);
 
     // Сигналинг звонков (real-time)

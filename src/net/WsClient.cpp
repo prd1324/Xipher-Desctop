@@ -112,6 +112,10 @@ void WsClient::onTextMessage(const QString& text) {
         const QString tempId = o.value(QStringLiteral("temp_id")).toString();
         emit newMessage(peerId, m, tempId);
     }
+    else if (type == QStringLiteral("group_message") || type == QStringLiteral("channel_new_message")) {
+        const QString chatId = o.value(QStringLiteral("chat_id")).toString();
+        if (!chatId.isEmpty()) emit peerMessage(chatId);
+    }
     else if (type == QStringLiteral("call_answer")) {
         emit callAnswerReceived(o.value(QStringLiteral("from_user_id")).toString(),
                                 o.value(QStringLiteral("answer")).toString());
