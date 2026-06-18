@@ -26,6 +26,7 @@ class QLabel;
 class QStackedWidget;
 class QScrollArea;
 class QVBoxLayout;
+class QHBoxLayout;
 class QTimer;
 class QMediaPlayer;
 class QAudioOutput;
@@ -91,6 +92,9 @@ private:
     void onVoicePlayPause(VoiceMessageWidget* w, const QString& path);
     void rebuildChatList();
     void mergeAllChats();   // объединить личку + группы + каналы → chats_
+    void rebuildFolderStrip();
+    void setActiveFolder(const QString& id);
+    void openFolderEditor(const QString& folderId);   // пустой id = новая папка
     int  indexOfChat(const QString& id) const;
     void openChat(const Chat& chat);
     void addBubble(const ChatMessage& msg);
@@ -166,6 +170,10 @@ private:
     QList<Chat> groupChats_;       // /api/get-groups
     QList<Chat> channelChats_;     // /api/get-channels
     ChatKind    currentKind_ = ChatKind::User;   // тип открытого чата
+    QList<Folder> folders_;        // папки (синхр. с сервером)
+    QString       activeFolderId_ = QStringLiteral("all");
+    QWidget*      folderStrip_ = nullptr;
+    QHBoxLayout*  folderTabs_  = nullptr;
     QList<UserHit> searchHits_;   // глобальный поиск людей в сайдбаре
     QString     searchQuery_;
     QTimer*     searchTimer_ = nullptr;

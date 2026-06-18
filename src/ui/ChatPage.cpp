@@ -2,6 +2,8 @@
 #include "ui/NewChatDialog.h"
 #include "ui/SettingsDialog.h"
 #include "ui/GroupChannelDialogs.h"
+#include "ui/FolderDialog.h"
+#include "net/Prefs.h"
 #include "ui/VoiceMessageWidget.h"
 #include "ui/RecordingBar.h"
 #include "ui/EmojiPicker.h"
@@ -237,6 +239,14 @@ ChatPage::ChatPage(ApiClient* api, WsClient* ws, QWidget* parent)
     connect(api_, &ApiClient::channelsLoaded, this, [this](const QList<Chat>& c){ channelChats_ = c; mergeAllChats(); });
     connect(api_, &ApiClient::groupMessagesLoaded, this, &ChatPage::onMessagesLoaded);
     connect(api_, &ApiClient::channelMessagesLoaded, this, &ChatPage::onMessagesLoaded);
+    connect(api_, &ApiClient::foldersLoaded, this, [this](const QList<Folder>& f) {
+        folders_ = f;
+        const QString saved = Prefs::getStr(QStringLiteral("xipher_active_folder"), QStringLiteral("all"));
+        activeFolderId_ = QStringLiteral("all");
+        for (const Folder& fl : folders_) if (fl.id == saved) activeFolderId_ = saved;
+        rebuildFolderStrip();
+        rebuildChatList();
+    });
     connect(api_, &ApiClient::messageSent,     this, &ChatPage::onMessageSent);
     connect(ws_,  &WsClient::newMessage,       this, &ChatPage::onWsMessage);
     connect(api_, &ApiClient::voiceUploaded,   this, &ChatPage::onVoiceUploaded);
@@ -340,6 +350,13 @@ QMenu::separator { height:1px; background:rgba(255,255,255,0.08); margin:4px 8px
 #emptyHint { font-size:15px; color:#726C82; }
 #iconBtn { border:none; background:transparent; color:#ACA6BD; font-size:13px; }
 #iconBtn:hover { color:#F3F1F8; }
+#folderStrip { background:#131218; border-bottom:1px solid rgba(255,255,255,0.06); }
+#folderScroll { background:transparent; }
+#folderTab { background:transparent; border:none; color:#ACA6BD; font-size:13px; font-weight:600; padding:6px 12px; border-radius:9px; }
+#folderTab:hover { background:#1A1822; color:#F3F1F8; }
+#folderTabActive { background:rgba(139,92,246,0.20); border:none; color:#F3F1F8; font-size:13px; font-weight:700; padding:6px 12px; border-radius:9px; }
+#folderAdd { background:transparent; border:none; color:#8B5CF6; font-size:18px; font-weight:700; padding:4px 12px; border-radius:9px; }
+#folderAdd:hover { background:#1A1822; }
 )QSS"));
 
     auto* root = new QHBoxLayout(this);
@@ -393,12 +410,34 @@ QMenu::separator { height:1px; background:rgba(255,255,255,0.08); margin:4px 8px
     search_->setPlaceholderText(QStringLiteral("Поиск"));
     swl->addWidget(search_);
 
+    // Полоса папок (как в Telegram): горизонтальные вкладки под поиском.
+    folderStrip_ = new QWidget(sidebar);
+    folderStrip_->setObjectName(QStringLiteral("folderStrip"));
+    auto* fsl = new QVBoxLayout(folderStrip_);
+    fsl->setContentsMargins(0, 0, 0, 0);
+    auto* fScroll = new QScrollArea(folderStrip_);
+    fScroll->setObjectName(QStringLiteral("folderScroll"));
+    fScroll->setWidgetResizable(true);
+    fScroll->setFixedHeight(44);
+    fScroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    fScroll->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    fScroll->setFrameShape(QFrame::NoFrame);
+    auto* tabsW = new QWidget();
+    folderTabs_ = new QHBoxLayout(tabsW);
+    folderTabs_->setContentsMargins(8, 4, 8, 4);
+    folderTabs_->setSpacing(4);
+    folderTabs_->addStretch();
+    fScroll->setWidget(tabsW);
+    fsl->addWidget(fScroll);
+    folderStrip_->setVisible(false);   // показываем, только если есть папки
+
     chatList_ = new QListWidget(sidebar);
     chatList_->setObjectName(QStringLiteral("chatList"));
     chatList_->setVerticalScrollMode(QAbstractItemView::ScrollPerPixel);
 
     side->addWidget(sideHeader);
     side->addWidget(searchWrap);
+    side->addWidget(folderStrip_);
     side->addWidget(chatList_, 1);
 
     // ── Область переписки ──────────────────────────────────────────────────────
@@ -627,6 +666,7 @@ void ChatPage::load() {
     api_->getChats();
     api_->getGroups();
     api_->getChannels();
+    api_->getChatFolders();
     if (!Session::instance().token.isEmpty())
         ws_->start(Session::instance().token);
 }
@@ -648,7 +688,93 @@ void ChatPage::mergeAllChats() {
     chats_ += personalChats_;
     chats_ += groupChats_;
     chats_ += channelChats_;
+    rebuildFolderStrip();   // обновить счётчики папок
     rebuildChatList();
+}
+
+// ── Папки ─────────────────────────────────────────────────────────────────────
+void ChatPage::rebuildFolderStrip() {
+    if (!folderTabs_) return;
+    folderStrip_->setVisible(!folders_.isEmpty());
+
+    // Очистить вкладки (оставив финальный stretch).
+    while (folderTabs_->count() > 1) {
+        QLayoutItem* it = folderTabs_->takeAt(0);
+        if (it->widget()) it->widget()->deleteLater();
+        delete it;
+    }
+    if (folders_.isEmpty()) return;
+
+    auto makeTab = [this](const QString& id, const QString& title, int count) {
+        const bool active = (id == activeFolderId_);
+        QString text = title;
+        if (count > 0) text += QStringLiteral("  %1").arg(count);
+        auto* b = new QPushButton(text);
+        b->setObjectName(active ? QStringLiteral("folderTabActive") : QStringLiteral("folderTab"));
+        b->setCursor(Qt::PointingHandCursor);
+        connect(b, &QPushButton::clicked, this, [this, id]() { setActiveFolder(id); });
+        if (id != QStringLiteral("all")) {
+            b->setContextMenuPolicy(Qt::CustomContextMenu);
+            connect(b, &QPushButton::customContextMenuRequested, this, [this, id, b](const QPoint&) {
+                QMenu m(this);
+                QAction* edit = m.addAction(QStringLiteral("Редактировать"));
+                QAction* del  = m.addAction(QStringLiteral("Удалить"));
+                QAction* ch = m.exec(b->mapToGlobal(QPoint(0, b->height())));
+                if (ch == edit) openFolderEditor(id);
+                else if (ch == del) {
+                    folders_.erase(std::remove_if(folders_.begin(), folders_.end(),
+                        [&](const Folder& f){ return f.id == id; }), folders_.end());
+                    if (activeFolderId_ == id) setActiveFolder(QStringLiteral("all"));
+                    api_->setChatFolders(folders_);
+                    rebuildFolderStrip();
+                }
+            });
+        }
+        return b;
+    };
+
+    int idx = 0;
+    folderTabs_->insertWidget(idx++, makeTab(QStringLiteral("all"), QStringLiteral("Все"), 0));
+    for (const Folder& f : folders_) {
+        int cnt = 0;
+        const QSet<QString> keys(f.chatKeys.begin(), f.chatKeys.end());
+        for (const Chat& c : chats_) if (keys.contains(chatKeyFor(c))) ++cnt;
+        folderTabs_->insertWidget(idx++, makeTab(f.id, f.name, cnt));
+    }
+    auto* add = new QPushButton(QStringLiteral("+"));
+    add->setObjectName(QStringLiteral("folderAdd"));
+    add->setCursor(Qt::PointingHandCursor);
+    add->setToolTip(QStringLiteral("Новая папка"));
+    connect(add, &QPushButton::clicked, this, [this]() { openFolderEditor(QString()); });
+    folderTabs_->insertWidget(idx++, add);
+}
+
+void ChatPage::setActiveFolder(const QString& id) {
+    activeFolderId_ = id;
+    Prefs::setStr(QStringLiteral("xipher_active_folder"), id);
+    rebuildFolderStrip();
+    rebuildChatList();
+}
+
+void ChatPage::openFolderEditor(const QString& folderId) {
+    Folder existing;
+    for (const Folder& f : folders_) if (f.id == folderId) { existing = f; break; }
+    auto* dlg = new FolderEditorDialog(chats_, existing, window());
+    connect(dlg, &FolderEditorDialog::saved, this, [this](const Folder& f) {
+        bool found = false;
+        for (Folder& ex : folders_) if (ex.id == f.id) { ex = f; found = true; break; }
+        if (!found) folders_.append(f);
+        api_->setChatFolders(folders_);
+        setActiveFolder(f.id);
+    });
+    connect(dlg, &FolderEditorDialog::removed, this, [this](const QString& id) {
+        folders_.erase(std::remove_if(folders_.begin(), folders_.end(),
+            [&](const Folder& f){ return f.id == id; }), folders_.end());
+        if (activeFolderId_ == id) activeFolderId_ = QStringLiteral("all");
+        api_->setChatFolders(folders_);
+        setActiveFolder(activeFolderId_);
+    });
+    dlg->showAnimated();
 }
 
 // Строка контакта (аватар + имя + подзаголовок + опц. время/бейдж).
@@ -706,8 +832,16 @@ void ChatPage::rebuildChatList() {
     chatList_->blockSignals(true);
     chatList_->clear();
 
+    // Активная папка: ограничиваем список её ключами.
+    QSet<QString> folderKeys;
+    if (activeFolderId_ != QStringLiteral("all"))
+        for (const Folder& f : folders_)
+            if (f.id == activeFolderId_) { folderKeys = QSet<QString>(f.chatKeys.begin(), f.chatKeys.end()); break; }
+    const bool folderActive = !folderKeys.isEmpty() || activeFolderId_ != QStringLiteral("all");
+
     QSet<QString> shownChatIds;
     for (const Chat& c : chats_) {
+        if (folderActive && !folderKeys.contains(chatKeyFor(c))) continue;
         if (!filter.isEmpty() &&
             !c.displayName.toLower().contains(filter) &&
             !c.name.toLower().contains(filter))
@@ -1240,6 +1374,8 @@ void ChatPage::showMainMenu() {
                                          QStringLiteral("Создать канал"));
     QAction* catalog    = menu.addAction(Icons::icon(Icons::Search, 18, QColor(0xF0,0xC8,0x4C)),
                                          QStringLiteral("Каталог каналов и групп"));
+    QAction* newFolder  = menu.addAction(Icons::icon(Icons::Checklist, 18, QColor(0x7E,0x8B,0xF0)),
+                                         QStringLiteral("Создать папку"));
     menu.addSeparator();
     QAction* settings = menu.addAction(Icons::icon(Icons::Gear, 18, ic), QStringLiteral("Настройки"));
     QAction* saved    = menu.addAction(Icons::icon(Icons::Checklist, 18, ic), QStringLiteral("Сохранённое"));
@@ -1261,6 +1397,8 @@ void ChatPage::showMainMenu() {
         auto* d = new CatalogDialog(api_, window());
         connect(d, &CatalogDialog::joined, this, [this]() { api_->getGroups(); api_->getChannels(); });
         d->showAnimated();
+    } else if (chosen == newFolder) {
+        openFolderEditor(QString());
     }
     else if (chosen == settings) openSettings();
     else if (chosen == saved) {

@@ -44,6 +44,7 @@ set(SOURCES
     src/ui/ToggleSwitch.cpp
     src/ui/SettingsDialog.cpp
     src/ui/GroupChannelDialogs.cpp
+    src/ui/FolderDialog.cpp
 )
 
 set(HEADERS

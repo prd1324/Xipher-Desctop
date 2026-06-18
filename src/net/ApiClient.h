@@ -81,6 +81,10 @@ public:
     void publicDirectory(const QString& category, const QString& search, int offset);
     void joinPublic(const QString& id, const QString& type);   // type: "channel"|"group"
 
+    // Папки чатов (синхронизация с сервером).
+    void getChatFolders();
+    void setChatFolders(const QList<Folder>& folders);
+
     // Настройки: профиль, приватность, сеансы, email восстановления.
     void getMyProfile();
     void updateMyProfile(const QString& firstName, const QString& lastName, const QString& bio,
@@ -135,6 +139,8 @@ signals:
     void channelMessagesLoaded(const QString& channelId, const QList<ChatMessage>& messages);
     void directoryLoaded(const QList<DirectoryItem>& items, bool hasMore);
     void publicJoined(bool ok, const QString& id);
+    void foldersLoaded(const QList<Folder>& folders);
+    void foldersSaved(bool ok);
 
     // Настройки.
     void profileUpdated(bool ok, const QString& message);

@@ -473,6 +473,42 @@ void ApiClient::joinPublic(const QString& id, const QString& type) {
     });
 }
 
+void ApiClient::getChatFolders() {
+    postJson(QStringLiteral("/api/get-chat-folders"), {{QStringLiteral("token"), Session::instance().token}},
+             [this](const QJsonObject& obj, bool, const QString&) {
+        QList<Folder> list;
+        for (const QJsonValue& v : obj.value(QStringLiteral("folders")).toArray()) {
+            const QJsonObject o = v.toObject();
+            Folder f;
+            f.id   = o.value(QStringLiteral("id")).toString();
+            f.name = o.value(QStringLiteral("name")).toString();
+            for (const QJsonValue& k : o.value(QStringLiteral("chat_keys")).toArray())
+                f.chatKeys << k.toString();
+            list.append(f);
+        }
+        emit foldersLoaded(list);
+    });
+}
+
+void ApiClient::setChatFolders(const QList<Folder>& folders) {
+    QJsonArray arr;
+    for (const Folder& f : folders) {
+        QJsonArray keys;
+        for (const QString& k : f.chatKeys) keys.append(k);
+        arr.append(QJsonObject{{QStringLiteral("id"), f.id},
+                               {QStringLiteral("name"), f.name},
+                               {QStringLiteral("chat_keys"), keys}});
+    }
+    // Сервер ждёт folders как СТРОКУ JSON (как в вебе).
+    const QString folded = QString::fromUtf8(QJsonDocument(arr).toJson(QJsonDocument::Compact));
+    postJson(QStringLiteral("/api/set-chat-folders"),
+             {{QStringLiteral("token"), Session::instance().token},
+              {QStringLiteral("folders"), folded}},
+             [this](const QJsonObject& obj, bool ok, const QString&) {
+        emit foldersSaved(ok && obj.value(QStringLiteral("success")).toBool(false));
+    });
+}
+
 // ── Настройки ───────────────────────────────────────────────────────────────
 
 void ApiClient::getMyProfile() { getUserProfile(Session::instance().userId); }

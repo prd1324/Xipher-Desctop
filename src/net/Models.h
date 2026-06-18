@@ -1,5 +1,6 @@
 #pragma once
 #include <QString>
+#include <QStringList>
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  Доменные модели чата — повторяют JSON прод-API
@@ -26,6 +27,14 @@ struct SessionInfo {
 
 // Тип чата (личка / группа / канал).
 enum class ChatKind { User = 0, Group = 1, Channel = 2 };
+
+// Папка чатов (синхронизируется с сервером /api/*-chat-folders).
+// chatKeys — явный список ключей вида "type:id" (type: chat|saved|group|channel).
+struct Folder {
+    QString     id;
+    QString     name;
+    QStringList chatKeys;
+};
 
 // Публичный элемент каталога (/api/public-directory → items[]).
 struct DirectoryItem {
@@ -58,6 +67,15 @@ struct Chat {
     QString customLink;        // @username группы/канала (опц.)
     bool    isBot = false;
 };
+
+// Ключ чата для папок: "type:id" (type: chat|saved|group|channel) — как в вебе.
+inline QString chatKeyFor(const Chat& c) {
+    QString t = c.isSaved ? QStringLiteral("saved")
+              : c.kind == ChatKind::Group   ? QStringLiteral("group")
+              : c.kind == ChatKind::Channel ? QStringLiteral("channel")
+                                            : QStringLiteral("chat");
+    return t + QStringLiteral(":") + c.id;
+}
 
 // Результат поиска пользователей (/api/search-users → users[]).
 struct UserHit {
