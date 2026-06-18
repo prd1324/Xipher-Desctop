@@ -7,6 +7,7 @@ class QLabel;
 class QCheckBox;
 class QVBoxLayout;
 class QLineEdit;
+class QScrollArea;
 
 // Префиксы протокола чек-листа (как в web/js/chat.js).
 namespace ChecklistProto {
@@ -60,6 +61,7 @@ private:
 
     QLineEdit* title_ = nullptr;
     QVBoxLayout* items_ = nullptr;
+    QScrollArea* itemsScroll_ = nullptr;
     QCheckBox* othersMark_ = nullptr;
     QCheckBox* othersAdd_ = nullptr;
 };

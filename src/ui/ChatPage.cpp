@@ -809,11 +809,50 @@ void ChatPage::addBubble(const ChatMessage& msg) {
             ? QStringLiteral("✓✓") : QStringLiteral("✓"));
         metaText += QStringLiteral("  ") + tick;
     }
+    auto* metaRow = new QHBoxLayout();
+    metaRow->setContentsMargins(0, 0, 0, 0);
+    metaRow->setSpacing(6);
+    metaRow->addStretch();
+
+    // Исчезающее сообщение: иконка-часы + обратный отсчёт.
+    if (msg.ttlSeconds > 0) {
+        auto* flame = new QLabel(bubble);
+        flame->setPixmap(Icons::pixmap(Icons::Clock, 12,
+            msg.sent ? QColor(0xF0,0xEC,0xFA) : QColor(0xAC,0xA6,0xBD)));
+        auto* ttlLbl = new QLabel(bubble);
+        ttlLbl->setStyleSheet(QString("color:%1;font-size:11px;font-weight:600;")
+            .arg(msg.sent ? QStringLiteral("rgba(240,236,250,0.8)") : QStringLiteral("#ACA6BD")));
+
+        const qint64 deadline = QDateTime::currentMSecsSinceEpoch() + qint64(msg.ttlSeconds) * 1000;
+        auto fmt = [](qint64 sec) -> QString {
+            if (sec >= 3600) return QStringLiteral("%1ч").arg(sec / 3600);
+            if (sec >= 60)   return QStringLiteral("%1м").arg(sec / 60);
+            return QStringLiteral("%1с").arg(sec);
+        };
+        ttlLbl->setText(fmt(msg.ttlSeconds));
+
+        auto* tick = new QTimer(ttlLbl);
+        tick->setInterval(1000);
+        QPointer<QWidget> rowGuard(row);
+        connect(tick, &QTimer::timeout, this, [this, ttlLbl, deadline, fmt, rowGuard]() {
+            const qint64 left = (deadline - QDateTime::currentMSecsSinceEpoch()) / 1000;
+            if (left <= 0) {
+                if (rowGuard) { rowGuard->deleteLater(); }   // сообщение «сгорело» (локально)
+                return;
+            }
+            ttlLbl->setText(fmt(left));
+        });
+        tick->start();
+
+        metaRow->addWidget(flame);
+        metaRow->addWidget(ttlLbl);
+    }
+
     auto* meta = new QLabel(metaText, bubble);
     meta->setStyleSheet(QString("color:%1;font-size:11px;")
         .arg(msg.sent ? QStringLiteral("rgba(240,236,250,0.65)") : QStringLiteral("#726C82")));
-    meta->setAlignment(Qt::AlignRight);
-    bl->addWidget(meta);
+    metaRow->addWidget(meta);
+    bl->addLayout(metaRow);
 
     if (msg.sent) { rl->addStretch(); rl->addWidget(bubble); }
     else          { rl->addWidget(bubble); rl->addStretch(); }
@@ -841,13 +880,14 @@ void ChatPage::onSendClicked() {
     m.status = QStringLiteral("sent");
     m.time = QTime::currentTime().toString(QStringLiteral("HH:mm"));
     m.id = tempId;
+    m.ttlSeconds = disappearTtl_;
     shownIds_.insert(tempId);
 
     addBubble(m);
     scrollToBottom();
     composer_->clear();
 
-    api_->sendMessage(currentPeerId_, text, tempId);
+    api_->sendMessage(currentPeerId_, text, tempId, disappearTtl_);
     bumpChat(currentPeerId_, text, m.time, /*incrementUnread*/ false);
 }
 

@@ -149,6 +149,7 @@ static ChatMessage parseMessage(const QJsonObject& o) {
     m.filePath    = o.value(QStringLiteral("file_path")).toString();
     m.fileName    = o.value(QStringLiteral("file_name")).toString();
     m.fileSize    = static_cast<long long>(o.value(QStringLiteral("file_size")).toDouble(0));
+    m.ttlSeconds  = o.value(QStringLiteral("ttl_seconds")).toInt(0);
     const QJsonObject reply = o.value(QStringLiteral("reply")).toObject();
     m.replyAuthor  = reply.value(QStringLiteral("author")).toString();
     m.replySnippet = reply.value(QStringLiteral("snippet")).toString();
@@ -184,12 +185,14 @@ void ApiClient::getMessages(const QString& friendId) {
     });
 }
 
-void ApiClient::sendMessage(const QString& receiverId, const QString& content, const QString& tempId) {
+void ApiClient::sendMessage(const QString& receiverId, const QString& content, const QString& tempId,
+                            int ttlSeconds) {
     QJsonObject body{{QStringLiteral("token"), Session::instance().token},
                      {QStringLiteral("receiver_id"), receiverId},
                      {QStringLiteral("content"), content},
                      {QStringLiteral("message_type"), QStringLiteral("text")},
                      {QStringLiteral("temp_id"), tempId}};
+    if (ttlSeconds > 0) body.insert(QStringLiteral("ttl_seconds"), ttlSeconds);
     postJson(QStringLiteral("/api/send-message"), body,
              [this, receiverId, content, tempId](const QJsonObject& obj, bool ok, const QString& netErr) {
         if (!ok && obj.isEmpty()) { emit chatError(QStringLiteral("send"), netErr); return; }

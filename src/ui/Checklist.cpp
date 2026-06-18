@@ -6,6 +6,9 @@
 #include <QCheckBox>
 #include <QLineEdit>
 #include <QPushButton>
+#include <QScrollArea>
+#include <QScrollBar>
+#include <QTimer>
 #include <QJsonArray>
 #include <QUuid>
 
@@ -154,9 +157,24 @@ QPushButton.add:hover{color:#F3F1F8;border-color:#8B5CF6;}
     title_->setPlaceholderText(QStringLiteral("Название чек-листа"));
     lay->addWidget(title_);
 
-    items_ = new QVBoxLayout();
+    // Пункты — в прокручиваемой области (чтобы при 20-30+ не вылезало за окно).
+    itemsScroll_ = new QScrollArea(this);
+    itemsScroll_->setWidgetResizable(true);
+    itemsScroll_->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    itemsScroll_->setMaximumHeight(280);
+    itemsScroll_->setStyleSheet(QStringLiteral(
+        "QScrollArea{border:none;background:transparent;}"
+        "QScrollBar:vertical{background:transparent;width:8px;margin:2px;}"
+        "QScrollBar::handle:vertical{background:rgba(255,255,255,0.14);border-radius:4px;min-height:30px;}"
+        "QScrollBar::add-line:vertical,QScrollBar::sub-line:vertical{height:0;}"));
+    auto* itemsHost = new QWidget();
+    itemsHost->setStyleSheet(QStringLiteral("background:transparent;"));
+    items_ = new QVBoxLayout(itemsHost);
+    items_->setContentsMargins(0, 0, 0, 0);
     items_->setSpacing(6);
-    lay->addLayout(items_);
+    items_->addStretch();   // строки прижаты вверх
+    itemsScroll_->setWidget(itemsHost);
+    lay->addWidget(itemsScroll_);
     addItemRow();
     addItemRow();
 
@@ -213,9 +231,14 @@ QPushButton.add:hover{color:#F3F1F8;border-color:#8B5CF6;}
 }
 
 void ChecklistEditor::addItemRow() {
-    auto* le = new QLineEdit(this);
+    auto* le = new QLineEdit();
     le->setProperty("class", "checklist-editor-input");
     le->setPlaceholderText(QStringLiteral("Текст пункта"));
-    items_->addWidget(le);
+    items_->insertWidget(items_->count() - 1, le);   // перед стретчем
     le->setFocus();
+    if (itemsScroll_) {
+        QTimer::singleShot(0, this, [this]() {
+            itemsScroll_->verticalScrollBar()->setValue(itemsScroll_->verticalScrollBar()->maximum());
+        });
+    }
 }

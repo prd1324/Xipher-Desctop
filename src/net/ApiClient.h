@@ -41,7 +41,8 @@ public:
     // Чат (токен берётся из Session).
     void getChats();
     void getMessages(const QString& friendId);
-    void sendMessage(const QString& receiverId, const QString& content, const QString& tempId);
+    void sendMessage(const QString& receiverId, const QString& content, const QString& tempId,
+                     int ttlSeconds = 0);
     // Универсальная отправка с произвольным message_type (location/checklist/…).
     void sendRaw(const QString& receiverId, const QString& content,
                  const QString& messageType, const QString& tempId);

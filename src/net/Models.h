@@ -50,6 +50,7 @@ struct ChatMessage {
     bool    sent = false;  // true → исходящее (моё)
     bool    isRead = false;
     bool    isDelivered = false;
+    int     ttlSeconds = 0;   // исчезающее сообщение (0 = обычное)
 
     // Вложение (voice/file/image): путь вида "/files/<имя>"
     QString filePath;
