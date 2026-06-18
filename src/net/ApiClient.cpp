@@ -805,6 +805,9 @@ void ApiClient::searchUsers(const QString& query) {
             if (u.displayName.isEmpty()) u.displayName = u.username;
             u.avatarUrl   = o.value(QStringLiteral("avatar_url")).toString();
             u.isPremium   = o.value(QStringLiteral("is_premium")).toBool(false);
+            u.online      = o.value(QStringLiteral("online")).toBool(o.value(QStringLiteral("is_online")).toBool(false));
+            u.isFriend    = o.value(QStringLiteral("is_friend")).toBool(false);
+            u.isBot       = o.value(QStringLiteral("is_bot")).toBool(false);
             users.append(u);
         }
         emit usersFound(query, users);

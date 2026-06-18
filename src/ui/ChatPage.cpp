@@ -5,6 +5,7 @@
 #include "ui/FolderDialog.h"
 #include "ui/ContactsPanel.h"
 #include "ui/PeerInfoPanel.h"
+#include "ui/ChatPickerDialog.h"
 #include "net/Prefs.h"
 #include "ui/VoiceMessageWidget.h"
 #include "ui/RecordingBar.h"
@@ -1350,11 +1351,11 @@ void ChatPage::showMessageMenu(QWidget* bubble, const QPoint& pos) {
     const bool    sent   = bubble->property("msgSent").toBool();
     const QString author = bubble->property("msgAuthor").toString();
 
+    const bool plain = !text.isEmpty() && !text.startsWith(QStringLiteral("[["));
     QMenu menu(this);
     QAction* reply = menu.addAction(QStringLiteral("Ответить"));
-    QAction* copy = nullptr;
-    if (!text.isEmpty() && !text.startsWith(QStringLiteral("[[")))
-        copy = menu.addAction(QStringLiteral("Копировать"));
+    QAction* forward = plain ? menu.addAction(QStringLiteral("Переслать")) : nullptr;
+    QAction* copy = plain ? menu.addAction(QStringLiteral("Копировать")) : nullptr;
     QAction* del = nullptr;
     if (sent && !id.isEmpty() && !id.startsWith(QStringLiteral("tmp_"))) {
         menu.addSeparator();
@@ -1362,9 +1363,22 @@ void ChatPage::showMessageMenu(QWidget* bubble, const QPoint& pos) {
     }
     QAction* ch = menu.exec(pos);
     if (!ch) return;
-    if (ch == reply)      setReplyTo(id, author, text);
-    else if (ch == copy)  QApplication::clipboard()->setText(text);
-    else if (ch == del)   api_->deleteMessage(id, currentKind_, currentPeerId_);
+    if (ch == reply)         setReplyTo(id, author, text);
+    else if (ch == copy)     QApplication::clipboard()->setText(text);
+    else if (ch == del)      api_->deleteMessage(id, currentKind_, currentPeerId_);
+    else if (ch == forward)  forwardMessage(text);
+}
+
+void ChatPage::forwardMessage(const QString& text) {
+    auto* picker = new ChatPickerDialog(chats_, QStringLiteral("Переслать в…"), window());
+    connect(picker, &ChatPickerDialog::picked, this, [this, text](const Chat& c) {
+        const QString tempId = QStringLiteral("tmp_%1").arg(++tempCounter_);
+        if (c.kind == ChatKind::Group)        api_->sendGroupMessage(c.id, text, tempId);
+        else if (c.kind == ChatKind::Channel) api_->sendChannelMessage(c.id, text, tempId);
+        else                                  api_->sendMessage(c.id, text, tempId);
+        openChat(c);   // переходим в чат назначения
+    });
+    picker->showAnimated();
 }
 
 void ChatPage::setReplyTo(const QString& id, const QString& author, const QString& text) {
@@ -1519,6 +1533,7 @@ void ChatPage::showMainMenu() {
 }
 
 void ChatPage::openSettings() {
+    if (settings_) return;   // уже открыто — не плодим копии
     settings_ = new SettingsDialog(api_, window());
     connect(settings_, &ModalOverlay::closed, this, [this]() { settings_ = nullptr; });
     settings_->showAnimated();

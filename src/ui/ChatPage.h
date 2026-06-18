@@ -99,6 +99,7 @@ private:
     void openChat(const Chat& chat);
     void addBubble(const ChatMessage& msg);
     void showMessageMenu(QWidget* bubble, const QPoint& pos);
+    void forwardMessage(const QString& text);
     void setReplyTo(const QString& id, const QString& author, const QString& text);
     void clearReplyTo();
     void reloadCurrentMessages();
