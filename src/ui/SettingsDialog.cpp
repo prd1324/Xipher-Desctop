@@ -87,7 +87,7 @@ QScrollArea* scrollPage(QWidget* content) {
 
 SettingsDialog::SettingsDialog(ApiClient* api, QWidget* parent)
     : ModalOverlay(parent, 680), api_(api) {
-    card()->setFixedHeight(520);
+    card()->setFixedHeight(540);
     card()->setStyleSheet(QStringLiteral(R"QSS(
 #modalCard{background:#17151E;border:1px solid rgba(255,255,255,0.08);border-radius:18px;}
 QLabel{color:#F3F1F8;}
@@ -97,7 +97,7 @@ QLabel{color:#F3F1F8;}
 #settingsTitle{font-size:18px;font-weight:800;color:#FFFFFF;}
 #closeBtn{background:rgba(255,255,255,0.16);border:none;border-radius:16px;color:#FFFFFF;font-size:16px;font-weight:700;}
 #closeBtn:hover{background:rgba(255,255,255,0.30);}
-#navWrap{background:#141019;border-bottom-left-radius:18px;}
+#navWrap{background:#141019;border-radius:14px;}
 #settingsNav{background:transparent;border:none;outline:none;}
 #settingsNav::item{color:#ACA6BD;padding:9px 10px;border-radius:10px;margin:2px 6px;}
 #settingsNav::item:hover{background:#221F2C;color:#F3F1F8;}
@@ -172,8 +172,8 @@ void SettingsDialog::buildChrome() {
     // Тело: навигация (в своей подложке) + стек.
     auto* bodyW = new QWidget();
     auto* bh = new QHBoxLayout(bodyW);
-    bh->setContentsMargins(0, 0, 10, 12);
-    bh->setSpacing(6);
+    bh->setContentsMargins(10, 8, 10, 12);
+    bh->setSpacing(8);
 
     auto* navWrap = new QWidget();
     navWrap->setObjectName(QStringLiteral("navWrap"));

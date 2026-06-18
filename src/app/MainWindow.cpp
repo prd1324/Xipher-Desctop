@@ -14,10 +14,31 @@
 #include <QLabel>
 #include <QTimer>
 
+#ifdef _WIN32
+#include <windows.h>
+#include <dwmapi.h>
+// Тёмный нативный заголовок окна под цвет приложения (Windows 10 2004+ / 11).
+static void applyDarkTitleBar(WId winId) {
+    HWND hwnd = reinterpret_cast<HWND>(winId);
+    BOOL dark = TRUE;
+    DwmSetWindowAttribute(hwnd, 20 /*DWMWA_USE_IMMERSIVE_DARK_MODE*/, &dark, sizeof(dark));
+    COLORREF caption = RGB(0x13, 0x12, 0x18);   // #131218 — как сайдбар/шапки
+    DwmSetWindowAttribute(hwnd, 35 /*DWMWA_CAPTION_COLOR*/, &caption, sizeof(caption));
+    COLORREF text = RGB(0xF3, 0xF1, 0xF8);
+    DwmSetWindowAttribute(hwnd, 36 /*DWMWA_TEXT_COLOR*/, &text, sizeof(text));
+    COLORREF border = RGB(0x13, 0x12, 0x18);
+    DwmSetWindowAttribute(hwnd, 34 /*DWMWA_BORDER_COLOR*/, &border, sizeof(border));
+}
+#endif
+
 MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     setWindowTitle(QStringLiteral("Xipher"));
     resize(1100, 760);
     setMinimumSize(720, 600);
+
+#ifdef _WIN32
+    applyDarkTitleBar(winId());   // winId() создаёт нативный хэндл
+#endif
 
     api_ = new ApiClient(this);
     ws_  = new WsClient(this);

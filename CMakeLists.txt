@@ -90,6 +90,10 @@ target_link_libraries(Xipher PRIVATE
     Qt6::Multimedia
 )
 
+if(WIN32)
+    target_link_libraries(Xipher PRIVATE dwmapi)   # тёмный заголовок окна (DwmSetWindowAttribute)
+endif()
+
 # ── WebRTC (libdatachannel, собран в third_party) для звонков ──────────────────
 set(LIBDC_DIR "${CMAKE_CURRENT_SOURCE_DIR}/third_party/libdatachannel")
 if(EXISTS "${LIBDC_DIR}/build/libdatachannel.dll.a")
