@@ -54,6 +54,35 @@ void WsClient::sendAuth() {
     sock_->sendTextMessage(QString::fromUtf8(QJsonDocument(auth).toJson(QJsonDocument::Compact)));
 }
 
+void WsClient::sendCallOffer(const QString& targetId, const QString& sdpJson, const QString& callType) {
+    QJsonObject m{{QStringLiteral("type"), QStringLiteral("call_offer")},
+                  {QStringLiteral("token"), token_},
+                  {QStringLiteral("target_user_id"), targetId},
+                  {QStringLiteral("call_type"), callType},
+                  {QStringLiteral("offer"), sdpJson}};
+    sock_->sendTextMessage(QString::fromUtf8(QJsonDocument(m).toJson(QJsonDocument::Compact)));
+}
+void WsClient::sendCallAnswer(const QString& targetId, const QString& sdpJson) {
+    QJsonObject m{{QStringLiteral("type"), QStringLiteral("call_answer")},
+                  {QStringLiteral("token"), token_},
+                  {QStringLiteral("target_user_id"), targetId},
+                  {QStringLiteral("answer"), sdpJson}};
+    sock_->sendTextMessage(QString::fromUtf8(QJsonDocument(m).toJson(QJsonDocument::Compact)));
+}
+void WsClient::sendCallIce(const QString& targetId, const QString& candJson) {
+    QJsonObject m{{QStringLiteral("type"), QStringLiteral("call_ice_candidate")},
+                  {QStringLiteral("token"), token_},
+                  {QStringLiteral("target_user_id"), targetId},
+                  {QStringLiteral("candidate"), candJson}};
+    sock_->sendTextMessage(QString::fromUtf8(QJsonDocument(m).toJson(QJsonDocument::Compact)));
+}
+void WsClient::sendCallEnd(const QString& targetId) {
+    QJsonObject m{{QStringLiteral("type"), QStringLiteral("call_end")},
+                  {QStringLiteral("token"), token_},
+                  {QStringLiteral("target_user_id"), targetId}};
+    sock_->sendTextMessage(QString::fromUtf8(QJsonDocument(m).toJson(QJsonDocument::Compact)));
+}
+
 void WsClient::onTextMessage(const QString& text) {
     const QJsonDocument doc = QJsonDocument::fromJson(text.toUtf8());
     if (!doc.isObject()) return;

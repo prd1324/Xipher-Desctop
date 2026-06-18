@@ -23,6 +23,12 @@ public:
     void start(const QString& token);   // подключиться и авторизоваться
     void stop();
 
+    // Сигналинг звонков по WebSocket (сервер форвардит собеседнику в реалтайме).
+    void sendCallOffer(const QString& targetId, const QString& sdpJson, const QString& callType);
+    void sendCallAnswer(const QString& targetId, const QString& sdpJson);
+    void sendCallIce(const QString& targetId, const QString& candJson);
+    void sendCallEnd(const QString& targetId);
+
 signals:
     // Пришло новое сообщение. peerId — id чата с моей точки зрения (собеседник).
     void newMessage(const QString& peerId, const ChatMessage& msg, const QString& tempId);

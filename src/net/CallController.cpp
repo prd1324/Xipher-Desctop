@@ -101,9 +101,17 @@ CallController::CallController(ApiClient* api, WsClient* ws, QWidget* window, QO
 
 CallEngine* CallController::createEngine() {
     auto* e = new CallEngine(this);
-    connect(e, &CallEngine::localOffer, this, [this](const QString& sdp) { api_->callOffer(peerId_, wrapSdp(QStringLiteral("offer"), sdp)); });
-    connect(e, &CallEngine::localAnswer, this, [this](const QString& sdp) { api_->callAnswer(peerId_, wrapSdp(QStringLiteral("answer"), sdp)); });
-    connect(e, &CallEngine::localCandidate, this, [this](const QString& cand, const QString&) { api_->callIce(peerId_, wrapCandidate(cand)); });
+    connect(e, &CallEngine::localOffer, this, [this](const QString& sdp) {
+        qInfo() << "[call] sending offer (WS), len" << sdp.size();
+        ws_->sendCallOffer(peerId_, wrapSdp(QStringLiteral("offer"), sdp), QStringLiteral("audio"));
+    });
+    connect(e, &CallEngine::localAnswer, this, [this](const QString& sdp) {
+        qInfo() << "[call] sending answer (WS), len" << sdp.size();
+        ws_->sendCallAnswer(peerId_, wrapSdp(QStringLiteral("answer"), sdp));
+    });
+    connect(e, &CallEngine::localCandidate, this, [this](const QString& cand, const QString&) {
+        ws_->sendCallIce(peerId_, wrapCandidate(cand));
+    });
     connect(e, &CallEngine::connected, this, [this]() {
         connected_ = true;
         if (overlay_) { overlay_->setStatus(QStringLiteral("00:00")); overlay_->startCallTimer(); }
@@ -125,7 +133,7 @@ void CallController::startOutgoing(const QString& peerId, const QString& peerNam
     overlay_->setStatus(QStringLiteral("Вызов…"));
     connect(overlay_, &CallOverlay::hangup, this, [this]() {
         if (!connected_) sendCallEvent(QStringLiteral("cancelled"));   // лог «Звонок отменён»
-        api_->callEnd(peerId_); cleanup();
+        ws_->sendCallEnd(peerId_); api_->callEnd(peerId_); cleanup();
     });
     connect(overlay_, &CallOverlay::muteToggled, this, [this](bool m) { if (engine_) engine_->setMuted(m); });
     overlay_->show();
@@ -156,9 +164,11 @@ void CallController::onIncoming(const QString& callerId, const QString& callerNa
     connect(overlay_, &CallOverlay::accept, this, [this]() { acceptIncoming(); });
     connect(overlay_, &CallOverlay::decline, this, [this]() {
         sendCallEvent(QStringLiteral("rejected"));
-        api_->callEnd(peerId_); cleanup();
+        ws_->sendCallEnd(peerId_); api_->callEnd(peerId_); cleanup();
     });
-    connect(overlay_, &CallOverlay::hangup, this, [this]() { api_->callEnd(peerId_); cleanup(); });
+    connect(overlay_, &CallOverlay::hangup, this, [this]() {
+        ws_->sendCallEnd(peerId_); api_->callEnd(peerId_); cleanup();
+    });
     connect(overlay_, &CallOverlay::muteToggled, this, [this](bool m) { if (engine_) engine_->setMuted(m); });
     overlay_->show();
     overlay_->raise();
