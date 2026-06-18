@@ -34,6 +34,7 @@ set(SOURCES
     src/ui/EmojiPicker.cpp
     src/ui/AvatarUtil.cpp
     src/ui/Checklist.cpp
+    src/ui/ModalOverlay.cpp
 )
 
 set(HEADERS
@@ -56,6 +57,7 @@ set(HEADERS
     src/ui/AvatarUtil.h
     src/ui/Icons.h
     src/ui/Checklist.h
+    src/ui/ModalOverlay.h
 )
 
 qt_add_executable(Xipher

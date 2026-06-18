@@ -6,6 +6,7 @@
 #include "ui/Icons.h"
 #include "ui/AvatarUtil.h"
 #include "ui/Checklist.h"
+#include "ui/ModalOverlay.h"
 #include "net/ApiClient.h"
 #include "net/WsClient.h"
 #include "net/Session.h"
@@ -1025,28 +1026,34 @@ void ChatPage::pickAndSendFile() {
 
 void ChatPage::openChecklistDialog() {
     if (currentPeerId_.isEmpty()) return;
-    ChecklistDialog dlg(this);
-    if (dlg.exec() != QDialog::Accepted) return;
-    const QJsonObject payload = dlg.payload();
-    if (payload.isEmpty()) return;
 
-    const QString content = ChecklistProto::kPrefix +
-        QString::fromUtf8(QJsonDocument(payload).toJson(QJsonDocument::Compact));
-    const QString tempId = QStringLiteral("clk_%1").arg(++tempCounter_);
-    shownIds_.insert(tempId);
+    // Оверлей поверх приложения (как модалки в Telegram), не отдельное окно.
+    auto* overlay = new ModalOverlay(window(), 440);
+    auto* editor = new ChecklistEditor(overlay->card());
+    overlay->cardLayout()->addWidget(editor);
 
-    // Оптимистичный баббл.
-    ChatMessage m;
-    m.id = tempId; m.sent = true; m.status = QStringLiteral("sent");
-    m.messageType = QStringLiteral("text");
-    m.content = content;
-    m.time = QTime::currentTime().toString(QStringLiteral("HH:mm"));
-    addBubble(m);
-    scrollToBottom();
+    connect(editor, &ChecklistEditor::cancelled, overlay, &ModalOverlay::closeAnimated);
+    connect(editor, &ChecklistEditor::submitted, this,
+            [this, overlay](const QJsonObject& payload) {
+        overlay->closeAnimated();
+        const QString content = ChecklistProto::kPrefix +
+            QString::fromUtf8(QJsonDocument(payload).toJson(QJsonDocument::Compact));
+        const QString tempId = QStringLiteral("clk_%1").arg(++tempCounter_);
+        shownIds_.insert(tempId);
 
-    api_->sendRaw(currentPeerId_, content, QStringLiteral("text"), tempId);
-    bumpChat(currentPeerId_, QStringLiteral("Чек-лист"),
-             m.time, false);
+        ChatMessage m;
+        m.id = tempId; m.sent = true; m.status = QStringLiteral("sent");
+        m.messageType = QStringLiteral("text");
+        m.content = content;
+        m.time = QTime::currentTime().toString(QStringLiteral("HH:mm"));
+        addBubble(m);
+        scrollToBottom();
+
+        api_->sendRaw(currentPeerId_, content, QStringLiteral("text"), tempId);
+        bumpChat(currentPeerId_, QStringLiteral("Чек-лист"), m.time, false);
+    });
+
+    overlay->showAnimated();
 }
 
 void ChatPage::sendLocation() {

@@ -1,6 +1,5 @@
 #pragma once
 #include <QWidget>
-#include <QDialog>
 #include <QJsonObject>
 #include <QHash>
 
@@ -44,13 +43,17 @@ private:
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  ChecklistDialog — создание чек-листа (заголовок, пункты, опции).
+//  ChecklistEditor — встраиваемый редактор создания чек-листа (для оверлея,
+//  как в Telegram). Сигналы submitted(payload) / cancelled.
 // ─────────────────────────────────────────────────────────────────────────────
-class ChecklistDialog : public QDialog {
+class ChecklistEditor : public QWidget {
     Q_OBJECT
 public:
-    explicit ChecklistDialog(QWidget* parent = nullptr);
-    QJsonObject payload() const { return payload_; }
+    explicit ChecklistEditor(QWidget* parent = nullptr);
+
+signals:
+    void submitted(const QJsonObject& payload);
+    void cancelled();
 
 private:
     void addItemRow();
@@ -59,5 +62,4 @@ private:
     QVBoxLayout* items_ = nullptr;
     QCheckBox* othersMark_ = nullptr;
     QCheckBox* othersAdd_ = nullptr;
-    QJsonObject payload_;
 };

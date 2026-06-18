@@ -123,12 +123,8 @@ void ChecklistWidget::applyUpdate(const QJsonObject& update) {
 
 // ── ChecklistDialog ───────────────────────────────────────────────────────────
 
-ChecklistDialog::ChecklistDialog(QWidget* parent) : QDialog(parent) {
-    setWindowTitle(QStringLiteral("Чек-лист"));
-    setModal(true);
-    resize(420, 440);
+ChecklistEditor::ChecklistEditor(QWidget* parent) : QWidget(parent) {
     setStyleSheet(QStringLiteral(R"QSS(
-QDialog { background:#131218; }
 QLabel { color:#F3F1F8; }
 #title { font-size:18px;font-weight:800; }
 QLineEdit { background:#1A1822;border:1px solid rgba(255,255,255,0.10);border-radius:10px;
@@ -147,7 +143,7 @@ QPushButton.add:hover{color:#F3F1F8;border-color:#8B5CF6;}
 )QSS"));
 
     auto* lay = new QVBoxLayout(this);
-    lay->setContentsMargins(20, 18, 20, 18);
+    lay->setContentsMargins(0, 0, 0, 0);
     lay->setSpacing(10);
 
     auto* head = new QLabel(QStringLiteral("Новый чек-лист"), this);
@@ -190,7 +186,7 @@ QPushButton.add:hover{color:#F3F1F8;border-color:#8B5CF6;}
     btnRow->addWidget(send);
     lay->addLayout(btnRow);
 
-    connect(cancel, &QPushButton::clicked, this, &QDialog::reject);
+    connect(cancel, &QPushButton::clicked, this, &ChecklistEditor::cancelled);
     connect(send, &QPushButton::clicked, this, [this]() {
         QJsonArray arr;
         for (int i = 0; i < items_->count(); ++i) {
@@ -205,18 +201,18 @@ QPushButton.add:hover{color:#F3F1F8;border-color:#8B5CF6;}
             arr.append(o);
         }
         if (arr.isEmpty()) return;
-        payload_ = QJsonObject{
+        QJsonObject payload{
             {QStringLiteral("id"), QUuid::createUuid().toString(QUuid::WithoutBraces)},
             {QStringLiteral("title"), title_->text().trimmed()},
             {QStringLiteral("othersCanMark"), othersMark_->isChecked()},
             {QStringLiteral("othersCanAdd"), othersAdd_->isChecked()},
             {QStringLiteral("items"), arr}
         };
-        accept();
+        emit submitted(payload);
     });
 }
 
-void ChecklistDialog::addItemRow() {
+void ChecklistEditor::addItemRow() {
     auto* le = new QLineEdit(this);
     le->setProperty("class", "checklist-editor-input");
     le->setPlaceholderText(QStringLiteral("Текст пункта"));
