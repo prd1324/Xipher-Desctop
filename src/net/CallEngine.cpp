@@ -153,6 +153,7 @@ void CallEngine::addRemoteCandidate(const QString& cand, const QString& mid) {
 }
 
 void CallEngine::flushCandidates() {
+    if (!pendingCands_.isEmpty()) qInfo() << "[call] flush buffered candidates:" << pendingCands_.size();
     for (const auto& c : pendingCands_) {
         try { pc_->addRemoteCandidate(rtc::Candidate(c.first.toStdString(), c.second.toStdString())); }
         catch (const std::exception& e) { qWarning() << "[call] flush candidate failed:" << e.what(); }

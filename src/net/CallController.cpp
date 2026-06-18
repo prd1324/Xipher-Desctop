@@ -204,12 +204,14 @@ void CallController::applyAnswer(const QString& calleeId, const QString& payload
 
 void CallController::addCandidates(const QString& otherId, const QStringList& cands) {
     if (!engine_ || otherId != peerId_) return;
+    int added = 0;
     for (const QString& c : cands) {
         if (c.isEmpty() || addedCandidates_.contains(c)) continue;
         addedCandidates_.insert(c);
         const QPair<QString, QString> cm = unwrapCandidate(c);
-        if (!cm.first.isEmpty()) engine_->addRemoteCandidate(cm.first, cm.second);
+        if (!cm.first.isEmpty()) { engine_->addRemoteCandidate(cm.first, cm.second); ++added; }
     }
+    if (added > 0) qInfo() << "[call] added remote candidates:" << added << "total" << addedCandidates_.size();
 }
 
 void CallController::sendCallEvent(const QString& status) {
