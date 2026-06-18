@@ -1383,6 +1383,11 @@ static void showInfoOverlay(QWidget* host, const QString& title, const QString& 
 
 void ChatPage::startCall() {
     if (currentPeerId_.isEmpty()) return;
+    if (currentPeerId_ == Session::instance().userId) {   // «Избранные» — себе не звоним
+        showInfoOverlay(window(), QStringLiteral("Звонок"),
+                        QStringLiteral("Нельзя позвонить в «Избранные»."));
+        return;
+    }
     const int idx = indexOfChat(currentPeerId_);
     const QString avatar = idx >= 0 ? chats_[idx].avatarUrl : QString();
     emit callRequested(currentPeerId_, currentPeerName_, avatar);

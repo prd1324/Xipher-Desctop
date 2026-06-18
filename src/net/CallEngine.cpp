@@ -196,6 +196,17 @@ void CallEngine::onIncomingRtp(const QByteArray& rtp) {
 }
 
 void CallEngine::hangup() {
+    // Снимаем колбэки ДО закрытия — иначе поздний onStateChange/onCandidate из
+    // внутреннего потока libdatachannel дёрнет уже освобождённые объекты (краш).
+    if (pc_) {
+        try {
+            pc_->onStateChange(nullptr);
+            pc_->onLocalDescription(nullptr);
+            pc_->onLocalCandidate(nullptr);
+            pc_->onGatheringStateChange(nullptr);
+        } catch (...) {}
+    }
+    if (track_) { try { track_->onMessage(nullptr, nullptr); } catch (...) {} }
     stopAudioIo();
     track_.reset();
     rtpConfig_.reset();

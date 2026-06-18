@@ -2,6 +2,7 @@
 #include "net/CallEngine.h"
 #include "net/ApiClient.h"
 #include "net/WsClient.h"
+#include "net/Session.h"
 #include "ui/CallOverlay.h"
 
 #include <QWidget>
@@ -57,6 +58,7 @@ CallEngine* CallController::createEngine() {
 
 void CallController::startOutgoing(const QString& peerId, const QString& peerName, const QString& avatarUrl) {
     if (busy() || peerId.isEmpty()) return;
+    if (peerId == Session::instance().userId) return;   // себе («Избранные») не звоним
     peerId_ = peerId; peerName_ = peerName; avatarUrl_ = avatarUrl; caller_ = true;
 
     overlay_ = new CallOverlay(window_);
@@ -106,8 +108,12 @@ void CallController::acceptIncoming() {
 }
 
 void CallController::cleanup() {
-    if (engine_) { engine_->hangup(); engine_->deleteLater(); engine_ = nullptr; }
-    if (overlay_) { overlay_->hide(); overlay_->deleteLater(); overlay_ = nullptr; }
-    peerId_.clear(); peerName_.clear(); avatarUrl_.clear();
+    static bool inCleanup = false;
+    if (inCleanup) return;          // защита от повторного входа
+    inCleanup = true;
     onIce_ = nullptr;
+    if (engine_) { CallEngine* e = engine_; engine_ = nullptr; e->hangup(); e->deleteLater(); }
+    if (overlay_) { CallOverlay* o = overlay_; overlay_ = nullptr; o->hide(); o->deleteLater(); }
+    peerId_.clear(); peerName_.clear(); avatarUrl_.clear();
+    inCleanup = false;
 }
