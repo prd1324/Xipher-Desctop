@@ -68,6 +68,18 @@ public:
     void getCallIce(const QString& otherId);
     void checkIncomingCalls();
 
+    // Группы и каналы.
+    void getGroups();
+    void getChannels();
+    void createGroup(const QString& name, const QString& description);
+    void createChannel(const QString& name, const QString& description, const QString& customLink);
+    void getGroupMessages(const QString& groupId);
+    void getChannelMessages(const QString& channelId);
+    void sendGroupMessage(const QString& groupId, const QString& content, const QString& tempId);
+    void sendChannelMessage(const QString& channelId, const QString& content, const QString& tempId);
+    void publicDirectory(const QString& category, const QString& search, int offset);
+    void joinPublic(const QString& id, const QString& type);   // type: "channel"|"group"
+
     // Настройки: профиль, приватность, сеансы, email восстановления.
     void getMyProfile();
     void updateMyProfile(const QString& firstName, const QString& lastName, const QString& bio,
@@ -111,6 +123,16 @@ signals:
 
     void usersFound(const QString& query, const QList<UserHit>& users);
     void profileLoaded(const QJsonObject& profile);
+
+    // Группы/каналы/каталог.
+    void groupsLoaded(const QList<Chat>& groups);
+    void channelsLoaded(const QList<Chat>& channels);
+    void groupCreated(bool ok, const QString& message);
+    void channelCreated(bool ok, const QString& message);
+    void groupMessagesLoaded(const QString& groupId, const QList<ChatMessage>& messages);
+    void channelMessagesLoaded(const QString& channelId, const QList<ChatMessage>& messages);
+    void directoryLoaded(const QList<DirectoryItem>& items, bool hasMore);
+    void publicJoined(bool ok, const QString& id);
 
     // Настройки.
     void profileUpdated(bool ok, const QString& message);

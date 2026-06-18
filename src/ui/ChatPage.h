@@ -90,6 +90,7 @@ private:
     void playVoice(const QString& serverPath);
     void onVoicePlayPause(VoiceMessageWidget* w, const QString& path);
     void rebuildChatList();
+    void mergeAllChats();   // объединить личку + группы + каналы → chats_
     int  indexOfChat(const QString& id) const;
     void openChat(const Chat& chat);
     void addBubble(const ChatMessage& msg);
@@ -160,7 +161,11 @@ private:
     VoiceMessageWidget* activeVoice_ = nullptr;
     QString             activeVoicePath_;
 
-    QList<Chat> chats_;
+    QList<Chat> chats_;            // объединённый список (личка + группы + каналы)
+    QList<Chat> personalChats_;    // /api/chats
+    QList<Chat> groupChats_;       // /api/get-groups
+    QList<Chat> channelChats_;     // /api/get-channels
+    ChatKind    currentKind_ = ChatKind::User;   // тип открытого чата
     QList<UserHit> searchHits_;   // глобальный поиск людей в сайдбаре
     QString     searchQuery_;
     QTimer*     searchTimer_ = nullptr;

@@ -1,6 +1,7 @@
 #include "ui/ChatPage.h"
 #include "ui/NewChatDialog.h"
 #include "ui/SettingsDialog.h"
+#include "ui/GroupChannelDialogs.h"
 #include "ui/VoiceMessageWidget.h"
 #include "ui/RecordingBar.h"
 #include "ui/EmojiPicker.h"
@@ -232,6 +233,10 @@ ChatPage::ChatPage(ApiClient* api, WsClient* ws, QWidget* parent)
 
     connect(api_, &ApiClient::chatsLoaded,    this, &ChatPage::onChatsLoaded);
     connect(api_, &ApiClient::messagesLoaded,  this, &ChatPage::onMessagesLoaded);
+    connect(api_, &ApiClient::groupsLoaded, this, [this](const QList<Chat>& g){ groupChats_ = g; mergeAllChats(); });
+    connect(api_, &ApiClient::channelsLoaded, this, [this](const QList<Chat>& c){ channelChats_ = c; mergeAllChats(); });
+    connect(api_, &ApiClient::groupMessagesLoaded, this, &ChatPage::onMessagesLoaded);
+    connect(api_, &ApiClient::channelMessagesLoaded, this, &ChatPage::onMessagesLoaded);
     connect(api_, &ApiClient::messageSent,     this, &ChatPage::onMessageSent);
     connect(ws_,  &WsClient::newMessage,       this, &ChatPage::onWsMessage);
     connect(api_, &ApiClient::voiceUploaded,   this, &ChatPage::onVoiceUploaded);
@@ -620,6 +625,8 @@ QMenu::separator { height:1px; background:rgba(255,255,255,0.08); margin:4px 8px
 
 void ChatPage::load() {
     api_->getChats();
+    api_->getGroups();
+    api_->getChannels();
     if (!Session::instance().token.isEmpty())
         ws_->start(Session::instance().token);
 }
@@ -631,7 +638,16 @@ int ChatPage::indexOfChat(const QString& id) const {
 }
 
 void ChatPage::onChatsLoaded(const QList<Chat>& chats) {
-    chats_ = chats;
+    personalChats_ = chats;
+    mergeAllChats();
+}
+
+void ChatPage::mergeAllChats() {
+    chats_.clear();
+    chats_.reserve(personalChats_.size() + groupChats_.size() + channelChats_.size());
+    chats_ += personalChats_;
+    chats_ += groupChats_;
+    chats_ += channelChats_;
     rebuildChatList();
 }
 
@@ -762,15 +778,24 @@ void ChatPage::onChatClicked() {
 void ChatPage::openChat(const Chat& chat) {
     currentPeerId_   = chat.id;
     currentPeerName_ = chat.displayName;
+    currentKind_     = chat.kind;
     peerName_->setText(chat.displayName);
     Avatar::setRound(peerAvatar_, chat.isSaved ? QString() : chat.avatarUrl,
                      chat.isSaved ? QStringLiteral("★") : chat.displayName, 40);
-    peerStatus_->setText(chat.isSaved ? QStringLiteral("Заметки для себя")
-                                      : (chat.online ? QStringLiteral("в сети")
-                                                     : QStringLiteral("не в сети")));
+    QString status;
+    if (chat.kind == ChatKind::Group)
+        status = chat.membersCount > 0 ? QStringLiteral("%1 участников").arg(chat.membersCount)
+                                       : QStringLiteral("Группа");
+    else if (chat.kind == ChatKind::Channel)
+        status = QStringLiteral("Канал");
+    else status = chat.isSaved ? QStringLiteral("Заметки для себя")
+                               : (chat.online ? QStringLiteral("в сети") : QStringLiteral("не в сети"));
+    peerStatus_->setText(status);
     convStack_->setCurrentIndex(1);
     clearMessages();
-    api_->getMessages(chat.id);
+    if (chat.kind == ChatKind::Group)        api_->getGroupMessages(chat.id);
+    else if (chat.kind == ChatKind::Channel) api_->getChannelMessages(chat.id);
+    else                                     api_->getMessages(chat.id);
 
     // Сброс непрочитанных в списке
     const int idx = indexOfChat(chat.id);
@@ -1146,7 +1171,9 @@ void ChatPage::onSendClicked() {
     scrollToBottom();
     composer_->clear();
 
-    api_->sendMessage(currentPeerId_, text, tempId, disappearTtl_);
+    if (currentKind_ == ChatKind::Group)        api_->sendGroupMessage(currentPeerId_, text, tempId);
+    else if (currentKind_ == ChatKind::Channel) api_->sendChannelMessage(currentPeerId_, text, tempId);
+    else                                        api_->sendMessage(currentPeerId_, text, tempId, disappearTtl_);
     bumpChat(currentPeerId_, text, m.time, /*incrementUnread*/ false);
 }
 
@@ -1206,20 +1233,37 @@ void ChatPage::onSearchChanged(const QString& text) {
 
 void ChatPage::showMainMenu() {
     QMenu menu(this);
-    QAction* settings = menu.addAction(Icons::icon(Icons::Gear, 18, QColor(0xF3,0xF1,0xF8)),
-                                       QStringLiteral("Настройки"));
-    QAction* saved = menu.addAction(Icons::icon(Icons::Checklist, 18, QColor(0xF3,0xF1,0xF8)),
-                                    QStringLiteral("Сохранённое"));
-    QAction* contacts = menu.addAction(Icons::icon(Icons::User, 18, QColor(0xF3,0xF1,0xF8)),
-                                       QStringLiteral("Контакты"));
+    const QColor ic(0xF3, 0xF1, 0xF8);
+    QAction* newGroup   = menu.addAction(Icons::icon(Icons::User, 18, QColor(0x46,0xB9,0x8A)),
+                                         QStringLiteral("Создать группу"));
+    QAction* newChannel = menu.addAction(Icons::icon(Icons::Bell, 18, QColor(0x4C,0x9A,0xF5)),
+                                         QStringLiteral("Создать канал"));
+    QAction* catalog    = menu.addAction(Icons::icon(Icons::Search, 18, QColor(0xF0,0xC8,0x4C)),
+                                         QStringLiteral("Каталог каналов и групп"));
+    menu.addSeparator();
+    QAction* settings = menu.addAction(Icons::icon(Icons::Gear, 18, ic), QStringLiteral("Настройки"));
+    QAction* saved    = menu.addAction(Icons::icon(Icons::Checklist, 18, ic), QStringLiteral("Сохранённое"));
+    QAction* contacts = menu.addAction(Icons::icon(Icons::User, 18, ic), QStringLiteral("Контакты"));
     menu.addSeparator();
     QAction* logout = menu.addAction(Icons::icon(Icons::Logout, 18, QColor(0xE5,0x68,0x7A)),
                                      QStringLiteral("Выйти"));
 
     QAction* chosen = menu.exec(menuBtn_->mapToGlobal(QPoint(0, menuBtn_->height() + 6)));
-    if (chosen == settings) openSettings();
+    if (chosen == newGroup) {
+        auto* d = new CreateGroupDialog(api_, window());
+        connect(d, &CreateGroupDialog::created, this, [this]() { api_->getGroups(); });
+        d->showAnimated();
+    } else if (chosen == newChannel) {
+        auto* d = new CreateChannelDialog(api_, window());
+        connect(d, &CreateChannelDialog::created, this, [this]() { api_->getChannels(); });
+        d->showAnimated();
+    } else if (chosen == catalog) {
+        auto* d = new CatalogDialog(api_, window());
+        connect(d, &CatalogDialog::joined, this, [this]() { api_->getGroups(); api_->getChannels(); });
+        d->showAnimated();
+    }
+    else if (chosen == settings) openSettings();
     else if (chosen == saved) {
-        // Открыть «Избранное» (saved messages) — это чат с самим собой.
         for (const Chat& c : chats_) if (c.isSaved) { openChat(c); return; }
         openChatWith(Session::instance().userId, QStringLiteral("Избранное"), Session::instance().username);
     }

@@ -272,6 +272,171 @@ void ApiClient::getUserProfile(const QString& userId) {
     });
 }
 
+// ── Группы и каналы ───────────────────────────────────────────────────────────
+
+namespace {
+QList<ChatMessage> parseGroupChannelMessages(const QJsonObject& obj) {
+    QList<ChatMessage> out;
+    const QString myId = Session::instance().userId;
+    for (const QJsonValue& v : obj.value(QStringLiteral("messages")).toArray()) {
+        const QJsonObject o = v.toObject();
+        ChatMessage m;
+        m.id          = o.value(QStringLiteral("id")).toString();
+        m.senderId    = o.value(QStringLiteral("sender_id")).toString();
+        m.senderName  = o.value(QStringLiteral("sender_username")).toString();
+        m.content     = o.value(QStringLiteral("content")).toString();
+        m.messageType = o.value(QStringLiteral("message_type")).toString(QStringLiteral("text"));
+        m.time        = o.value(QStringLiteral("time")).toString();
+        m.createdAt   = o.value(QStringLiteral("created_at")).toString();
+        m.filePath    = o.value(QStringLiteral("file_path")).toString();
+        m.fileName    = o.value(QStringLiteral("file_name")).toString();
+        m.fileSize    = static_cast<long long>(o.value(QStringLiteral("file_size")).toDouble(0));
+        m.sent        = (m.senderId == myId);
+        out.append(m);
+    }
+    return out;
+}
+}
+
+void ApiClient::getGroups() {
+    postJson(QStringLiteral("/api/get-groups"), {{QStringLiteral("token"), Session::instance().token}},
+             [this](const QJsonObject& obj, bool, const QString&) {
+        QList<Chat> list;
+        for (const QJsonValue& v : obj.value(QStringLiteral("groups")).toArray()) {
+            const QJsonObject o = v.toObject();
+            Chat c;
+            c.id          = o.value(QStringLiteral("id")).toString();
+            c.name        = o.value(QStringLiteral("name")).toString();
+            c.displayName = c.name;
+            c.lastMessage = o.value(QStringLiteral("description")).toString();
+            c.customLink  = o.value(QStringLiteral("custom_link")).toString();
+            c.membersCount= o.value(QStringLiteral("members_count")).toInt();
+            c.kind        = ChatKind::Group;
+            list.append(c);
+        }
+        emit groupsLoaded(list);
+    });
+}
+
+void ApiClient::getChannels() {
+    postJson(QStringLiteral("/api/get-channels"), {{QStringLiteral("token"), Session::instance().token}},
+             [this](const QJsonObject& obj, bool, const QString&) {
+        QList<Chat> list;
+        for (const QJsonValue& v : obj.value(QStringLiteral("channels")).toArray()) {
+            const QJsonObject o = v.toObject();
+            Chat c;
+            c.id          = o.value(QStringLiteral("id")).toString();
+            c.name        = o.value(QStringLiteral("name")).toString();
+            c.displayName = c.name;
+            c.lastMessage = o.value(QStringLiteral("description")).toString();
+            c.customLink  = o.value(QStringLiteral("custom_link")).toString();
+            c.avatarUrl   = o.value(QStringLiteral("avatar_url")).toString();
+            c.kind        = ChatKind::Channel;
+            list.append(c);
+        }
+        emit channelsLoaded(list);
+    });
+}
+
+void ApiClient::createGroup(const QString& name, const QString& description) {
+    postJson(QStringLiteral("/api/create-group"),
+             {{QStringLiteral("token"), Session::instance().token},
+              {QStringLiteral("name"), name}, {QStringLiteral("description"), description}},
+             [this](const QJsonObject& obj, bool ok, const QString& netErr) {
+        const bool s = ok && obj.value(QStringLiteral("success")).toBool(false);
+        emit groupCreated(s, s ? QString() : obj.value(QStringLiteral("error")).toString(
+            obj.value(QStringLiteral("message")).toString(netErr)));
+    });
+}
+
+void ApiClient::createChannel(const QString& name, const QString& description, const QString& customLink) {
+    QJsonObject body{{QStringLiteral("token"), Session::instance().token},
+                     {QStringLiteral("name"), name}, {QStringLiteral("description"), description}};
+    if (!customLink.isEmpty()) body.insert(QStringLiteral("custom_link"), customLink);
+    postJson(QStringLiteral("/api/create-channel"), body,
+             [this](const QJsonObject& obj, bool ok, const QString& netErr) {
+        const bool s = ok && obj.value(QStringLiteral("success")).toBool(false);
+        emit channelCreated(s, s ? QString() : obj.value(QStringLiteral("error")).toString(
+            obj.value(QStringLiteral("message")).toString(netErr)));
+    });
+}
+
+void ApiClient::getGroupMessages(const QString& groupId) {
+    postJson(QStringLiteral("/api/get-group-messages"),
+             {{QStringLiteral("token"), Session::instance().token},
+              {QStringLiteral("group_id"), groupId}, {QStringLiteral("limit"), 100}},
+             [this, groupId](const QJsonObject& obj, bool, const QString&) {
+        emit groupMessagesLoaded(groupId, parseGroupChannelMessages(obj));
+    });
+}
+
+void ApiClient::getChannelMessages(const QString& channelId) {
+    postJson(QStringLiteral("/api/get-channel-messages"),
+             {{QStringLiteral("token"), Session::instance().token},
+              {QStringLiteral("channel_id"), channelId}, {QStringLiteral("limit"), 100}},
+             [this, channelId](const QJsonObject& obj, bool, const QString&) {
+        emit channelMessagesLoaded(channelId, parseGroupChannelMessages(obj));
+    });
+}
+
+void ApiClient::sendGroupMessage(const QString& groupId, const QString& content, const QString& tempId) {
+    postJson(QStringLiteral("/api/send-group-message"),
+             {{QStringLiteral("token"), Session::instance().token},
+              {QStringLiteral("group_id"), groupId},
+              {QStringLiteral("content"), content},
+              {QStringLiteral("message_type"), QStringLiteral("text")},
+              {QStringLiteral("temp_id"), tempId}},
+             [](const QJsonObject&, bool, const QString&) {});
+}
+
+void ApiClient::sendChannelMessage(const QString& channelId, const QString& content, const QString& tempId) {
+    postJson(QStringLiteral("/api/send-channel-message"),
+             {{QStringLiteral("token"), Session::instance().token},
+              {QStringLiteral("channel_id"), channelId},
+              {QStringLiteral("content"), content},
+              {QStringLiteral("message_type"), QStringLiteral("text")},
+              {QStringLiteral("temp_id"), tempId}},
+             [](const QJsonObject&, bool, const QString&) {});
+}
+
+void ApiClient::publicDirectory(const QString& category, const QString& search, int offset) {
+    postJson(QStringLiteral("/api/public-directory"),
+             {{QStringLiteral("token"), Session::instance().token},
+              {QStringLiteral("category"), category.isEmpty() ? QStringLiteral("all") : category},
+              {QStringLiteral("search"), search},
+              {QStringLiteral("limit"), 20}, {QStringLiteral("offset"), offset}},
+             [this](const QJsonObject& obj, bool, const QString&) {
+        QList<DirectoryItem> items;
+        for (const QJsonValue& v : obj.value(QStringLiteral("items")).toArray()) {
+            const QJsonObject o = v.toObject();
+            DirectoryItem d;
+            d.id           = o.value(QStringLiteral("id")).toString();
+            d.type         = o.value(QStringLiteral("type")).toString();
+            d.name         = o.value(QStringLiteral("name")).toString();
+            d.username     = o.value(QStringLiteral("username")).toString();
+            d.description  = o.value(QStringLiteral("description")).toString();
+            d.avatarUrl    = o.value(QStringLiteral("avatar_url")).toString();
+            d.membersCount = o.value(QStringLiteral("members_count")).toInt();
+            d.verified     = o.value(QStringLiteral("verified")).toBool(false);
+            d.isMember     = o.value(QStringLiteral("is_member")).toBool(false);
+            d.isPrivate    = o.value(QStringLiteral("is_private")).toBool(false);
+            items.append(d);
+        }
+        emit directoryLoaded(items, obj.value(QStringLiteral("has_more")).toBool(false));
+    });
+}
+
+void ApiClient::joinPublic(const QString& id, const QString& type) {
+    const QString path = (type == QStringLiteral("channel"))
+        ? QStringLiteral("/api/subscribe-channel") : QStringLiteral("/api/join-group");
+    QJsonObject body{{QStringLiteral("token"), Session::instance().token}};
+    if (type == QStringLiteral("channel")) body.insert(QStringLiteral("channel_id"), id);
+    else { body.insert(QStringLiteral("group_id"), id); body.insert(QStringLiteral("invite_link"), id); }
+    postJson(path, body, [this, id](const QJsonObject& obj, bool ok, const QString&) {
+        emit publicJoined(ok && obj.value(QStringLiteral("success")).toBool(false), id);
+    });
+}
+
 // ── Настройки ───────────────────────────────────────────────────────────────
 
 void ApiClient::getMyProfile() { getUserProfile(Session::instance().userId); }

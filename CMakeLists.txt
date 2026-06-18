@@ -43,6 +43,7 @@ set(SOURCES
     src/ui/ProfilePanel.cpp
     src/ui/ToggleSwitch.cpp
     src/ui/SettingsDialog.cpp
+    src/ui/GroupChannelDialogs.cpp
 )
 
 set(HEADERS

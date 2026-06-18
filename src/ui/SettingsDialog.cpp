@@ -178,7 +178,7 @@ void SettingsDialog::buildChrome() {
     auto* navWrap = new QWidget();
     navWrap->setObjectName(QStringLiteral("navWrap"));
     navWrap->setAttribute(Qt::WA_StyledBackground, true);
-    navWrap->setFixedWidth(214);
+    navWrap->setFixedWidth(244);
     auto* nwl = new QVBoxLayout(navWrap);
     nwl->setContentsMargins(2, 8, 2, 8);
     nav_ = new QListWidget();

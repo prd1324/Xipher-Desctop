@@ -24,6 +24,23 @@ struct SessionInfo {
     bool    current = false;
 };
 
+// Тип чата (личка / группа / канал).
+enum class ChatKind { User = 0, Group = 1, Channel = 2 };
+
+// Публичный элемент каталога (/api/public-directory → items[]).
+struct DirectoryItem {
+    QString id;
+    QString type;          // "channel" | "group"
+    QString name;
+    QString username;      // @custom_link (опц.)
+    QString description;
+    QString avatarUrl;
+    int     membersCount = 0;
+    bool    verified = false;
+    bool    isMember = false;
+    bool    isPrivate = false;
+};
+
 // Элемент списка чатов (/api/chats → chats[]).
 struct Chat {
     QString id;            // user_id собеседника (или свой для «Избранных»)
@@ -36,6 +53,9 @@ struct Chat {
     int     unread = 0;
     bool    online = false;
     bool    isSaved = false;   // «Избранные» (saved messages)
+    ChatKind kind = ChatKind::User;
+    int     membersCount = 0;
+    QString customLink;        // @username группы/канала (опц.)
     bool    isBot = false;
 };
 
@@ -60,6 +80,7 @@ struct FriendRequest {
 struct ChatMessage {
     QString id;
     QString senderId;
+    QString senderName;    // имя отправителя (для групп/каналов)
     QString content;
     QString messageType = QStringLiteral("text");
     QString time;          // "HH:MM"
