@@ -248,6 +248,16 @@ QWidget* SettingsDialog::buildAccountPage() {
         const QByteArray bytes = f.readAll();
         api_->uploadAvatar(bytes, QFileInfo(fn).fileName());
     });
+    // Сам аватар тоже кликабельный (как в Telegram) — открывает тот же выбор фото.
+    avatar_->setCursor(Qt::PointingHandCursor);
+    avatar_->setToolTip(QStringLiteral("Сменить фото"));
+    auto* avHit = new QPushButton(avatar_);
+    avHit->setCursor(Qt::PointingHandCursor);
+    avHit->setFixedSize(76, 76);
+    avHit->setStyleSheet(QStringLiteral(
+        "QPushButton{background:transparent;border:none;border-radius:38px;}"
+        "QPushButton:hover{background:rgba(0,0,0,0.30);}"));
+    connect(avHit, &QPushButton::clicked, camBtn, &QPushButton::click);
     auto* names = new QVBoxLayout();
     names->setSpacing(2);
     heroName_ = new QLabel(Session::instance().username);

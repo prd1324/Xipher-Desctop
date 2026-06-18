@@ -11,6 +11,13 @@
 #include <QScrollArea>
 #include <QFrame>
 #include <QTimer>
+#include <QFileDialog>
+#include <QFile>
+#include <QFileInfo>
+#include <QPixmap>
+#include <QPainter>
+#include <QPainterPath>
+#include <functional>
 
 namespace {
 const char* kCardQss = R"QSS(
@@ -38,6 +45,46 @@ QScrollBar:vertical{background:transparent;width:8px;margin:2px;}
 QScrollBar::handle:vertical{background:rgba(255,255,255,0.12);border-radius:4px;min-height:36px;}
 QScrollBar::add-line:vertical,QScrollBar::sub-line:vertical{height:0;}
 )QSS";
+
+// Круглое превью выбранного изображения.
+QPixmap roundedPreview(const QString& path, int size) {
+    QPixmap src(path);
+    if (src.isNull()) return QPixmap();
+    src = src.scaled(size, size, Qt::KeepAspectRatioByExpanding, Qt::SmoothTransformation);
+    QPixmap out(size, size);
+    out.fill(Qt::transparent);
+    QPainter p(&out);
+    p.setRenderHint(QPainter::Antialiasing, true);
+    QPainterPath clip; clip.addEllipse(0, 0, size, size);
+    p.setClipPath(clip);
+    p.drawPixmap((size - src.width()) / 2, (size - src.height()) / 2, src);
+    return out;
+}
+
+// Делает QLabel-аватар кликабельным: по клику выбор файла, превью на месте,
+// callback с байтами и именем файла.
+void makeAvatarClickable(QLabel* avatar, int size, ModalOverlay* parent,
+                         std::function<void(QByteArray, QString)> onPick) {
+    avatar->setCursor(Qt::PointingHandCursor);
+    avatar->setToolTip(QStringLiteral("Выбрать фото"));
+    auto* hit = new QPushButton(avatar);
+    hit->setCursor(Qt::PointingHandCursor);
+    hit->setFixedSize(size, size);
+    hit->setStyleSheet(QStringLiteral(
+        "QPushButton{background:transparent;border:none;border-radius:%1px;}"
+        "QPushButton:hover{background:rgba(0,0,0,0.30);}").arg(size / 2));
+    QObject::connect(hit, &QPushButton::clicked, parent, [avatar, size, parent, onPick]() {
+        const QString fn = QFileDialog::getOpenFileName(parent, QStringLiteral("Выберите фото"),
+            QString(), QStringLiteral("Изображения (*.jpg *.jpeg *.png *.gif)"));
+        if (fn.isEmpty()) return;
+        QFile f(fn);
+        if (!f.open(QIODevice::ReadOnly)) return;
+        const QByteArray bytes = f.readAll();
+        const QPixmap pm = roundedPreview(fn, size);
+        if (!pm.isNull()) avatar->setPixmap(pm);
+        if (onPick) onPick(bytes, QFileInfo(fn).fileName());
+    });
+}
 
 QWidget* dialogHeader(const QString& title, ModalOverlay* dlg) {
     auto* head = new QWidget();
@@ -72,6 +119,7 @@ CreateGroupDialog::CreateGroupDialog(ApiClient* api, QWidget* parent)
     auto* top = new QHBoxLayout(); top->setSpacing(14);
     auto* av = new QLabel(); av->setFixedSize(64, 64);
     Avatar::setRound(av, QString(), QStringLiteral("G"), 64);
+    makeAvatarClickable(av, 64, this, nullptr);   // превью (аватар группы можно сменить позже)
     auto* name = new QLineEdit(); name->setPlaceholderText(QStringLiteral("Название группы"));
     top->addWidget(av); top->addWidget(name, 1);
     v->addLayout(top);
@@ -118,6 +166,9 @@ CreateChannelDialog::CreateChannelDialog(ApiClient* api, QWidget* parent)
     auto* top = new QHBoxLayout(); top->setSpacing(14);
     auto* av = new QLabel(); av->setFixedSize(64, 64);
     Avatar::setRound(av, QString(), QStringLiteral("C"), 64);
+    makeAvatarClickable(av, 64, this, [this](QByteArray b, QString n) {
+        avatarBytes_ = b; avatarName_ = n;   // загрузим после создания канала
+    });
     auto* name = new QLineEdit(); name->setPlaceholderText(QStringLiteral("Название канала"));
     top->addWidget(av); top->addWidget(name, 1);
     v->addLayout(top);
@@ -145,11 +196,28 @@ CreateChannelDialog::CreateChannelDialog(ApiClient* api, QWidget* parent)
         err->clear();
         QString l = link->text().trimmed();
         if (l.startsWith('@')) l = l.mid(1);
-        api_->createChannel(name->text().trimmed(), desc->toPlainText().trimmed(), l);
+        enteredName_ = name->text().trimmed();
+        enteredLink_ = l;
+        api_->createChannel(enteredName_, desc->toPlainText().trimmed(), l);
     });
     connect(api_, &ApiClient::channelCreated, this, [this, err](bool ok, const QString& m) {
-        if (ok) { emit created(); closeAnimated(); }
-        else err->setText(m.isEmpty() ? QStringLiteral("Не удалось создать канал") : m);
+        if (!ok) { err->setText(m.isEmpty() ? QStringLiteral("Не удалось создать канал") : m); return; }
+        if (avatarBytes_.isEmpty()) { emit created(); closeAnimated(); return; }
+        // Есть фото: находим созданный канал и грузим аватар, затем закрываем.
+        auto conn = std::make_shared<QMetaObject::Connection>();
+        *conn = connect(api_, &ApiClient::channelsLoaded, this,
+                        [this, conn](const QList<Chat>& chans) {
+            disconnect(*conn);
+            QString id;
+            for (const Chat& c : chans) {   // приоритет — совпадение по @ссылке, иначе по имени
+                if (!enteredLink_.isEmpty() && c.customLink == enteredLink_) { id = c.id; break; }
+                if (c.displayName == enteredName_) id = c.id;   // последний с таким именем = новый
+            }
+            if (id.isEmpty()) { emit created(); closeAnimated(); return; }
+            connect(api_, &ApiClient::channelAvatarUploaded, this, [this](bool){ emit created(); closeAnimated(); });
+            api_->uploadChannelAvatar(id, avatarBytes_, avatarName_);
+        });
+        api_->getChannels();
     });
 
     lay->addWidget(body);

@@ -73,6 +73,7 @@ public:
     void getChannels();
     void createGroup(const QString& name, const QString& description);
     void createChannel(const QString& name, const QString& description, const QString& customLink);
+    void uploadChannelAvatar(const QString& channelId, const QByteArray& bytes, const QString& fileName);
     void getGroupMessages(const QString& groupId);
     void getChannelMessages(const QString& channelId);
     void sendGroupMessage(const QString& groupId, const QString& content, const QString& tempId);
@@ -129,6 +130,7 @@ signals:
     void channelsLoaded(const QList<Chat>& channels);
     void groupCreated(bool ok, const QString& message);
     void channelCreated(bool ok, const QString& message);
+    void channelAvatarUploaded(bool ok);
     void groupMessagesLoaded(const QString& groupId, const QList<ChatMessage>& messages);
     void channelMessagesLoaded(const QString& channelId, const QList<ChatMessage>& messages);
     void directoryLoaded(const QList<DirectoryItem>& items, bool hasMore);

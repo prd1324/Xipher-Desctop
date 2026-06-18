@@ -2,6 +2,9 @@
 #include "ui/ModalOverlay.h"
 #include "net/Models.h"
 
+#include <QByteArray>
+#include <QString>
+
 class ApiClient;
 class QLineEdit;
 class QPlainTextEdit;
@@ -30,7 +33,11 @@ public:
 signals:
     void created();
 private:
-    ApiClient* api_;
+    ApiClient*  api_;
+    QByteArray  avatarBytes_;
+    QString     avatarName_;
+    QString     enteredName_;
+    QString     enteredLink_;
 };
 
 class CatalogDialog : public ModalOverlay {

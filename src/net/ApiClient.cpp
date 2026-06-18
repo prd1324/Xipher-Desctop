@@ -361,6 +361,42 @@ void ApiClient::createChannel(const QString& name, const QString& description, c
     });
 }
 
+void ApiClient::uploadChannelAvatar(const QString& channelId, const QByteArray& bytes,
+                                    const QString& fileName) {
+    auto* multi = new QHttpMultiPart(QHttpMultiPart::FormDataType);
+    auto addField = [multi](const QString& name, const QByteArray& val) {
+        QHttpPart p;
+        p.setHeader(QNetworkRequest::ContentDispositionHeader,
+                    QStringLiteral("form-data; name=\"%1\"").arg(name));
+        p.setBody(val);
+        multi->append(p);
+    };
+    addField(QStringLiteral("token"), Session::instance().token.toUtf8());
+    addField(QStringLiteral("channel_id"), channelId.toUtf8());
+
+    QHttpPart filePart;
+    QString ct = QStringLiteral("image/jpeg");
+    if (fileName.endsWith(QStringLiteral(".png"), Qt::CaseInsensitive)) ct = QStringLiteral("image/png");
+    else if (fileName.endsWith(QStringLiteral(".gif"), Qt::CaseInsensitive)) ct = QStringLiteral("image/gif");
+    filePart.setHeader(QNetworkRequest::ContentTypeHeader, ct);
+    filePart.setHeader(QNetworkRequest::ContentDispositionHeader,
+                       QStringLiteral("form-data; name=\"avatar\"; filename=\"%1\"").arg(fileName));
+    filePart.setBody(bytes);
+    multi->append(filePart);
+
+    QNetworkRequest req(QUrl(base_ + QStringLiteral("/api/upload-channel-avatar")));
+    req.setRawHeader("Authorization", QByteArray("Bearer ") + Session::instance().token.toUtf8());
+    req.setAttribute(QNetworkRequest::Http2AllowedAttribute, false);
+    QNetworkReply* reply = nam_->post(req, multi);
+    multi->setParent(reply);
+    QObject::connect(reply, &QNetworkReply::finished, this, [this, reply]() {
+        reply->deleteLater();
+        const QJsonObject o = QJsonDocument::fromJson(reply->readAll()).object();
+        emit channelAvatarUploaded(o.value(QStringLiteral("success")).toBool(!o.value(
+            QStringLiteral("avatar_url")).toString().isEmpty()));
+    });
+}
+
 void ApiClient::getGroupMessages(const QString& groupId) {
     postJson(QStringLiteral("/api/get-group-messages"),
              {{QStringLiteral("token"), Session::instance().token},
