@@ -10,8 +10,23 @@
 #include <QAudioDevice>
 #include <QIODevice>
 #include <QDebug>
+#include <QHostAddress>
+#include <QAbstractSocket>
+#include <QHostInfo>
 
 namespace {
+
+// Резолвим hostname → IPv4 САМИ (Qt), libjuice отдаём литеральный IP.
+// Внутренний резолвер libjuice на Windows за VPN-туннелем зависает
+// ("Waiting for resolver thread") → TURN-allocate не уходит, relay не собирается.
+QString resolveIPv4(const QString& host) {
+    if (QHostAddress(host).protocol() == QAbstractSocket::IPv4Protocol) return host;
+    const QHostInfo info = QHostInfo::fromName(host);
+    for (const QHostAddress& a : info.addresses())
+        if (a.protocol() == QAbstractSocket::IPv4Protocol) return a.toString();
+    return host;   // не вышло — отдаём как есть
+}
+
 constexpr int kSampleRate = 48000;
 constexpr int kChannels   = 1;
 constexpr int kFrame      = 960;             // 20 мс при 48 кГц
@@ -25,9 +40,56 @@ QAudioFormat pcmFormat() {
     f.setSampleFormat(QAudioFormat::Int16);
     return f;
 }
+
+// Разбор ICE-URL: "stun:host:port" / "turn:host:port?transport=udp" / "turns:host:port?transport=tcp".
+// host для IPv6 может быть в [...]; username/credential НЕ в URL (передаются отдельно),
+// т.к. TURN-username вида "<expiry>:<uuid>" содержит двоеточие и ломает userinfo-парсинг.
+bool parseIceUrl(const QString& url, QString& scheme, QString& host,
+                 uint16_t& port, QString& transport) {
+    QString s = url.trimmed();
+    const int colon = s.indexOf(':');
+    if (colon < 0) return false;
+    scheme = s.left(colon).toLower();
+    QString rest = s.mid(colon + 1);
+
+    transport = QStringLiteral("udp");
+    const int q = rest.indexOf('?');
+    if (q >= 0) {
+        const QString query = rest.mid(q + 1);
+        rest = rest.left(q);
+        for (const QString& kv : query.split('&'))
+            if (kv.startsWith(QStringLiteral("transport=")))
+                transport = kv.mid(10).toLower();
+    }
+
+    const bool turns = (scheme == QStringLiteral("turns"));
+    if (rest.startsWith('[')) {                       // IPv6 в скобках
+        const int close = rest.indexOf(']');
+        if (close < 0) return false;
+        host = rest.mid(1, close - 1);
+        const QString tail = rest.mid(close + 1);     // ":port" или ""
+        port = tail.startsWith(':') ? tail.mid(1).toUShort() : 0;
+    } else {
+        const int pc = rest.lastIndexOf(':');
+        if (pc >= 0) { host = rest.left(pc); port = rest.mid(pc + 1).toUShort(); }
+        else         { host = rest; port = 0; }
+    }
+    if (port == 0) port = turns ? 5349 : 3478;
+    return !host.isEmpty();
+}
 }
 
 CallEngine::CallEngine(QObject* parent) : QObject(parent) {
+    // Подробный лог libdatachannel/libjuice → наш файл (видно TURN-аллокацию, ICE-чеки).
+    static bool loggerInit = false;
+    if (!loggerInit) {
+        loggerInit = true;
+        // Только Warning+ — Verbose писал по диску на каждый STUN-пакет и тормозил
+        // ICE-проверки (коннект растягивался на ~13 c). Свои [call]-логи остаются.
+        rtc::InitLogger(rtc::LogLevel::Warning, [](rtc::LogLevel lvl, std::string msg) {
+            qInfo().noquote() << "[rtc]" << int(lvl) << QString::fromStdString(msg);
+        });
+    }
     int err = 0;
     enc_ = opus_encoder_create(kSampleRate, kChannels, OPUS_APPLICATION_VOIP, &err);
     if (enc_) opus_encoder_ctl(enc_, OPUS_SET_BITRATE(24000));
@@ -40,15 +102,41 @@ CallEngine::~CallEngine() {
     if (dec_) opus_decoder_destroy(dec_);
 }
 
-void CallEngine::setIceServers(const QStringList& servers) { iceServers_ = servers; }
+void CallEngine::setIceServers(const QList<IceServerCfg>& servers) { iceServers_ = servers; }
 
 void CallEngine::createPeerConnection() {
     rtc::Configuration config;
-    for (const QString& s : iceServers_) {
-        try { config.iceServers.emplace_back(s.toStdString()); } catch (...) {}
+    int turnCount = 0;
+    for (const IceServerCfg& cfg : iceServers_) {
+        QString scheme, host, transport; uint16_t port = 0;
+        if (!parseIceUrl(cfg.url, scheme, host, port, transport)) continue;
+        host = resolveIPv4(host);   // отдаём libjuice IP, минуя его зависающий резолвер
+        try {
+            if (scheme == QStringLiteral("stun")) {
+                config.iceServers.emplace_back(rtc::IceServer(host.toStdString(), port));
+            } else if (scheme == QStringLiteral("turn") || scheme == QStringLiteral("turns")) {
+                rtc::IceServer::RelayType rt = rtc::IceServer::RelayType::TurnUdp;
+                if (scheme == QStringLiteral("turns"))        rt = rtc::IceServer::RelayType::TurnTls;
+                else if (transport == QStringLiteral("tcp"))  rt = rtc::IceServer::RelayType::TurnTcp;
+                config.iceServers.emplace_back(rtc::IceServer(
+                    host.toStdString(), port,
+                    cfg.username.toStdString(), cfg.credential.toStdString(), rt));
+                ++turnCount;
+            }
+        } catch (const std::exception& e) {
+            qWarning() << "[call] bad ice server" << cfg.url << ":" << e.what();
+        }
     }
-    // Только свои сервера (из /api/turn-config). Сторонние STUN не используем.
-    qInfo() << "[call] ice servers count" << int(config.iceServers.size()) << iceServers_;
+    // Форсим ЧИСТЫЙ IPv4 (bind any IPv4): по умолчанию libjuice открывает IPv6
+    // dual-stack сокет и шлёт на IPv4 TURN через ::ffff:-mapping — на Windows за
+    // VPN-туннелем (happ-tun) такие пакеты не доходят до coturn, relay-allocate
+    // вечно "pending". Рабочий python-тест использовал AF_INET/0.0.0.0 — повторяем.
+    // ОС сама выберет src по маршруту. Сервер IPv4-only (нет AAAA), пиры тоже IPv4.
+    config.bindAddress = "0.0.0.0";
+
+    // Только свои сервера (из /api/turn-credentials). Сторонние STUN не используем.
+    qInfo() << "[call] ice servers count" << int(config.iceServers.size())
+            << "(turn relays:" << turnCount << ")";
 
     pc_ = std::make_shared<rtc::PeerConnection>(config);
 
@@ -59,12 +147,16 @@ void CallEngine::createPeerConnection() {
         else if (desc.type() == rtc::Description::Type::Answer) emit localAnswer(sdp);
     });
     pc_->onLocalCandidate([this](rtc::Candidate cand) {
-        qInfo() << "[call] local candidate";
-        emit localCandidate(QString::fromStdString(std::string(cand)),
-                            QString::fromStdString(cand.mid()));
+        const QString cs = QString::fromStdString(std::string(cand));
+        qInfo().noquote() << "[call] local candidate:" << cs;
+        emit localCandidate(cs, QString::fromStdString(cand.mid()));
     });
     pc_->onGatheringStateChange([](rtc::PeerConnection::GatheringState s) {
         qInfo() << "[call] gathering state" << int(s);
+    });
+    pc_->onIceStateChange([](rtc::PeerConnection::IceState s) {
+        // 1 Checking, 2 Connected, 3 Completed, 4 Failed, 5 Disconnected
+        qInfo() << "[call] ICE state" << int(s);
     });
     // Отвечающий получает аудио-трек из offer'а здесь (его нельзя добавлять заранее).
     pc_->onTrack([this](std::shared_ptr<rtc::Track> t) {
@@ -85,7 +177,10 @@ void CallEngine::createPeerConnection() {
 }
 
 void CallEngine::addLocalAudioTrack() {
-    rtc::Description::Audio media("audio", rtc::Description::Direction::SendRecv);
+    // mid="0" — как у браузера. CallController::wrapCandidate шлёт sdpMid="0",
+    // поэтому mid дорожки ДОЛЖЕН быть "0", иначе собеседник не сопоставит наши
+    // ICE-кандидаты с remote-описанием (mid "audio" ≠ "0") и связь не поднимется.
+    rtc::Description::Audio media("0", rtc::Description::Direction::SendRecv);
     media.addOpusCodec(kPayloadType);
     media.setBitrate(24);
     configureTrack(pc_->addTrack(media));
@@ -148,6 +243,7 @@ void CallEngine::setRemoteAnswer(const QString& sdp) {
 void CallEngine::addRemoteCandidate(const QString& cand, const QString& mid) {
     if (!pc_) return;
     if (!hasRemoteDesc_) { pendingCands_.append({cand, mid}); return; }   // буфер до remote-desc
+    qInfo().noquote() << "[call] remote candidate (mid" << mid << "):" << cand;
     try { pc_->addRemoteCandidate(rtc::Candidate(cand.toStdString(), mid.toStdString())); }
     catch (const std::exception& e) { qWarning() << "[call] addRemoteCandidate failed:" << e.what(); }
 }

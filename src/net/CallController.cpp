@@ -83,8 +83,8 @@ CallController::CallController(ApiClient* api, WsClient* ws, QWidget* window, QO
     });
 
     // ICE-серверы пришли → запускаем отложенное действие.
-    connect(api_, &ApiClient::turnConfigReady, this, [this](const QStringList& servers) {
-        qInfo() << "[call] turn-config servers:" << servers;
+    connect(api_, &ApiClient::turnConfigReady, this, [this](const QList<IceServerCfg>& servers) {
+        qInfo() << "[call] turn-config servers count:" << servers.size();
         if (onIce_) { auto fn = onIce_; onIce_ = nullptr; fn(servers); }
     });
 
@@ -142,7 +142,7 @@ void CallController::startOutgoing(const QString& peerId, const QString& peerNam
     qInfo() << "[call] outgoing to" << peerId_;
     engine_ = createEngine();
     api_->callNotify(peerId_, QStringLiteral("audio"));
-    onIce_ = [this](const QStringList& servers) {
+    onIce_ = [this](const QList<IceServerCfg>& servers) {
         if (engine_) { engine_->setIceServers(servers); engine_->startAsCaller(); }
     };
     api_->getTurnConfig();
@@ -188,7 +188,7 @@ void CallController::applyOffer(const QString& callerId, const QString& payload)
     qInfo() << "[call] got remote offer, sdp len" << sdp.size();
     offerFetched_ = true;
     engine_ = createEngine();
-    onIce_ = [this, sdp](const QStringList& servers) {
+    onIce_ = [this, sdp](const QList<IceServerCfg>& servers) {
         if (engine_) { engine_->setIceServers(servers); engine_->startAsCallee(sdp); }
     };
     api_->getTurnConfig();

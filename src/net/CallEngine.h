@@ -7,6 +7,8 @@
 #include <QPair>
 #include <memory>
 
+#include "net/Models.h"
+
 namespace rtc { class PeerConnection; class Track; class RtpPacketizationConfig; }
 class QAudioSource;
 class QAudioSink;
@@ -24,7 +26,7 @@ public:
     explicit CallEngine(QObject* parent = nullptr);
     ~CallEngine() override;
 
-    void setIceServers(const QStringList& servers);   // "stun:...", "turn:user:pass@host"
+    void setIceServers(const QList<IceServerCfg>& servers);   // STUN/TURN с эфемерными кредами
     void startAsCaller();                              // создаёт offer
     void startAsCallee(const QString& remoteOffer);    // принимает offer, создаёт answer
     void setRemoteAnswer(const QString& sdp);
@@ -53,7 +55,7 @@ private:
     std::shared_ptr<rtc::Track> track_;
     std::shared_ptr<rtc::RtpPacketizationConfig> rtpConfig_;
 
-    QStringList iceServers_;
+    QList<IceServerCfg> iceServers_;
     bool caller_ = false;
     bool muted_ = false;
     bool audioStarted_ = false;

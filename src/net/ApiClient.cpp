@@ -8,6 +8,7 @@
 #include <QJsonObject>
 #include <QJsonArray>
 #include <QUrl>
+#include <QDebug>
 
 ApiClient::ApiClient(QObject* parent)
     : QObject(parent), nam_(new QNetworkAccessManager(this)) {}
@@ -456,16 +457,65 @@ void ApiClient::fetchFile(const QString& filePath) {
 
 // ── Звонки (сигналинг) ────────────────────────────────────────────────────────
 
+// Веб берёт TURN-креды так: POST /api/turn-credentials (Bearer + {token,ttlMinutes})
+// → {username, credential, urls[], expires}. Это эфемерные креды use-auth-secret.
+// Прошлая реализация звала только /api/turn-config (отдаёт STUN без кредов) и вдобавок
+// выбрасывала username/credential → relay не поднимался, звонок вис на Checking.
 void ApiClient::getTurnConfig() {
+    const QString token = Session::instance().token;
+
+    QNetworkRequest req(QUrl(base_ + QStringLiteral("/api/turn-credentials")));
+    req.setHeader(QNetworkRequest::ContentTypeHeader, QStringLiteral("application/json"));
+    req.setRawHeader("Accept", "application/json");
+    req.setRawHeader("Authorization", QByteArray("Bearer ") + token.toUtf8());
+    req.setAttribute(QNetworkRequest::Http2AllowedAttribute, false);
+
+    const QByteArray payload = QJsonDocument(QJsonObject{
+        {QStringLiteral("token"), token},
+        {QStringLiteral("ttlMinutes"), 60}}).toJson(QJsonDocument::Compact);
+
+    QNetworkReply* reply = nam_->post(req, payload);
+    QObject::connect(reply, &QNetworkReply::finished, this, [this, reply]() {
+        reply->deleteLater();
+        const QJsonObject o = QJsonDocument::fromJson(reply->readAll()).object();
+        const QString username   = o.value(QStringLiteral("username")).toString();
+        const QString credential = o.value(QStringLiteral("credential")).toString();
+
+        if (!username.isEmpty() && !credential.isEmpty()) {
+            QStringList urls;
+            const QJsonValue uv = o.value(QStringLiteral("urls"));
+            if (uv.isString()) urls << uv.toString();
+            else for (const QJsonValue& u : uv.toArray()) urls << u.toString();
+
+            QList<IceServerCfg> servers;
+            // Доверяем только тому, что отдал сервер (его TURN/STUN). Хост не хардкодим:
+            // turn.xipher.pro указывает на старый узел, актуальные urls приходят отсюда.
+            for (const QString& u : urls) servers << IceServerCfg{u, username, credential};
+            qInfo() << "[call] turn-credentials ok:" << urls << "user" << username;
+            emit turnConfigReady(servers);
+            return;
+        }
+        qWarning() << "[call] turn-credentials empty/failed, fallback to turn-config;"
+                   << "http err:" << reply->errorString();
+        getTurnConfigFallback();
+    });
+}
+
+void ApiClient::getTurnConfigFallback() {
     QJsonObject body{{QStringLiteral("token"), Session::instance().token}};
     postJson(QStringLiteral("/api/turn-config"), body,
-             [this](const QJsonObject& obj, bool ok, const QString&) {
-        QStringList servers;
+             [this](const QJsonObject& obj, bool, const QString&) {
+        QList<IceServerCfg> servers;
         for (const QJsonValue& v : obj.value(QStringLiteral("ice_servers")).toArray()) {
-            const QJsonValue urls = v.toObject().value(QStringLiteral("urls"));
-            if (urls.isString()) servers << urls.toString();
-            else for (const QJsonValue& u : urls.toArray()) servers << u.toString();
+            const QJsonObject so = v.toObject();
+            const QString user = so.value(QStringLiteral("username")).toString();
+            const QString cred = so.value(QStringLiteral("credential")).toString();
+            const QJsonValue urls = so.value(QStringLiteral("urls"));
+            if (urls.isString()) servers << IceServerCfg{urls.toString(), user, cred};
+            else for (const QJsonValue& u : urls.toArray())
+                servers << IceServerCfg{u.toString(), user, cred};
         }
+        qInfo() << "[call] turn-config fallback, servers:" << servers.size();
         emit turnConfigReady(servers);
     });
 }

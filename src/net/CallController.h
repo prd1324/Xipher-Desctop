@@ -3,7 +3,10 @@
 #include <QString>
 #include <QStringList>
 #include <QSet>
+#include <QList>
 #include <functional>
+
+#include "net/Models.h"
 
 class ApiClient;
 class WsClient;
@@ -43,7 +46,7 @@ private:
     void sendCallEvent(const QString& status);
     QTimer*      poll_ = nullptr;
     QSet<QString> addedCandidates_;
-    std::function<void(const QStringList&)> onIce_;
+    std::function<void(const QList<IceServerCfg>&)> onIce_;
 
     void applyAnswer(const QString& calleeId, const QString& sdp);
     void applyOffer(const QString& callerId, const QString& sdp);

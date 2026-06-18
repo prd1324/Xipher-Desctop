@@ -6,6 +6,15 @@
 //  (/api/chats, /api/messages, /api/send-message).
 // ─────────────────────────────────────────────────────────────────────────────
 
+// ICE-сервер для WebRTC. Для STUN username/credential пустые; для TURN —
+// эфемерные креды (use-auth-secret/HMAC) из /api/turn-credentials.
+// url: "stun:host:port" | "turn:host:port?transport=udp" | "turns:host:port?transport=tcp".
+struct IceServerCfg {
+    QString url;
+    QString username;
+    QString credential;
+};
+
 // Элемент списка чатов (/api/chats → chats[]).
 struct Chat {
     QString id;            // user_id собеседника (или свой для «Избранных»)

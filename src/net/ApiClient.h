@@ -100,7 +100,7 @@ signals:
     void profileLoaded(const QJsonObject& profile);
     void contactRenamed(const QString& contactId, const QString& newName, bool ok);
 
-    void turnConfigReady(const QStringList& iceServers);
+    void turnConfigReady(const QList<IceServerCfg>& iceServers);
     void callOfferReady(const QString& callerId, const QString& sdp);
     void callAnswerReady(const QString& calleeId, const QString& sdp);
     void callIceBatch(const QString& otherId, const QStringList& candidates);
@@ -116,6 +116,9 @@ private:
                   std::function<void(const QJsonObject&, bool, const QString&)> callback);
 
     static AuthResult parseAuth(const QJsonObject& obj);
+
+    // Fallback на /api/turn-config (как у веба), если turn-credentials недоступен.
+    void getTurnConfigFallback();
 
     QNetworkAccessManager* nam_;
     QString base_ = QStringLiteral("https://messenger.xipher.pro");
