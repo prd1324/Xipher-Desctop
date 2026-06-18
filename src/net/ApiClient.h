@@ -58,6 +58,7 @@ public:
 
     // Люди и друзья.
     void getUserProfile(const QString& userId);
+    void setContactName(const QString& contactId, const QString& customName);
     void searchUsers(const QString& query);
     void sendFriendRequest(const QString& username);
     void getFriendRequests();
@@ -85,6 +86,7 @@ signals:
 
     void usersFound(const QString& query, const QList<UserHit>& users);
     void profileLoaded(const QJsonObject& profile);
+    void contactRenamed(const QString& contactId, const QString& newName, bool ok);
     void friendRequestSent(const QString& username, bool ok, const QString& message);
     void friendRequestsLoaded(const QList<FriendRequest>& requests);
     void friendActionDone(const QString& requestId, bool accepted, bool ok);

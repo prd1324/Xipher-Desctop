@@ -245,6 +245,17 @@ void ApiClient::sendRaw(const QString& receiverId, const QString& content,
 
 // ── Люди и друзья ─────────────────────────────────────────────────────────────
 
+void ApiClient::setContactName(const QString& contactId, const QString& customName) {
+    QJsonObject body{{QStringLiteral("token"), Session::instance().token},
+                     {QStringLiteral("contact_id"), contactId},
+                     {QStringLiteral("custom_name"), customName}};
+    postJson(QStringLiteral("/api/set-contact-name"), body,
+             [this, contactId, customName](const QJsonObject& obj, bool ok, const QString&) {
+        emit contactRenamed(contactId, customName,
+                            ok && obj.value(QStringLiteral("success")).toBool(false));
+    });
+}
+
 void ApiClient::getUserProfile(const QString& userId) {
     QJsonObject body{{QStringLiteral("token"), Session::instance().token},
                      {QStringLiteral("user_id"), userId}};

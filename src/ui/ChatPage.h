@@ -72,6 +72,10 @@ private slots:
     void pickAndSendFile();
     void openChecklistDialog();
     void sendLocation();
+    void toggleSearch();
+    void startCall();
+    void showChatMenu();
+    void openRenameDialog();
     void onFileUploaded(const QString& filePath, const QString& fileName, long long fileSize, const QString& tempId);
 
 protected:
@@ -86,6 +90,7 @@ private:
     void openChat(const Chat& chat);
     void addBubble(const ChatMessage& msg);
     void clearMessages();
+    void renderMessages(const QString& filter);   // отрисовать (с фильтром поиска)
     void updateGreeting();   // показать/скрыть пустой-чат приветствие
     void scrollToBottom();
     void bumpChat(const QString& peerId, const QString& lastText, const QString& time, bool incrementUnread);
@@ -100,6 +105,11 @@ private:
     // Переписка
     QStackedWidget* convStack_ = nullptr;   // 0 — пусто, 1 — диалог
     QWidget*     peerHeader_ = nullptr;
+    QPushButton* moreBtn_    = nullptr;
+    QWidget*     searchBar_  = nullptr;
+    QLineEdit*   msgSearch_  = nullptr;
+    QLabel*      searchCount_ = nullptr;
+    QList<ChatMessage> currentMessages_;   // загруженные сообщения текущего чата
     QLabel*      peerName_   = nullptr;
     QLabel*      peerStatus_ = nullptr;
     QLabel*      peerAvatar_ = nullptr;

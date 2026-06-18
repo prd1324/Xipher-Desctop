@@ -228,6 +228,12 @@ void ChatPage::buildUi() {
 #sideHeader, #convHeader { background:#131218; border-bottom:1px solid rgba(255,255,255,0.10); }
 #peerHeader { border-radius:10px; }
 #peerHeader:hover { background:#1A1822; }
+#hdrBtn { border:none; background:transparent; min-width:40px; min-height:40px; border-radius:20px; }
+#hdrBtn:hover { background:#1A1822; }
+#searchBar { background:#131218; border-bottom:1px solid rgba(255,255,255,0.10); }
+#msgSearch { background:#1A1822; border:1px solid rgba(255,255,255,0.10); border-radius:12px;
+    min-height:38px; padding:0 14px; color:#F3F1F8; }
+#msgSearch:focus { border:1px solid #8B5CF6; }
 #brandTitle { font-size:18px; font-weight:800; color:#F3F1F8; }
 #searchBox {
     background:#1A1822; border:1px solid rgba(255,255,255,0.10); border-radius:12px;
@@ -391,6 +397,32 @@ QMenu::separator { height:1px; background:rgba(255,255,255,0.08); margin:4px 8px
     chl->addWidget(peerHeader_);
     chl->addStretch();
 
+    // Действия в шапке (как в Telegram): поиск, звонок, «ещё».
+    const QColor hdrIcon(0xAC, 0xA6, 0xBD);
+    auto* searchBtn = new QPushButton(convHeader);
+    searchBtn->setObjectName(QStringLiteral("hdrBtn"));
+    searchBtn->setCursor(Qt::PointingHandCursor);
+    searchBtn->setIcon(Icons::icon(Icons::Search, 20, hdrIcon));
+    searchBtn->setIconSize(QSize(20, 20));
+    searchBtn->setToolTip(QStringLiteral("Поиск сообщений"));
+    auto* callBtn = new QPushButton(convHeader);
+    callBtn->setObjectName(QStringLiteral("hdrBtn"));
+    callBtn->setCursor(Qt::PointingHandCursor);
+    callBtn->setIcon(Icons::icon(Icons::Phone, 20, hdrIcon));
+    callBtn->setIconSize(QSize(20, 20));
+    callBtn->setToolTip(QStringLiteral("Позвонить"));
+    moreBtn_ = new QPushButton(convHeader);
+    moreBtn_->setObjectName(QStringLiteral("hdrBtn"));
+    moreBtn_->setCursor(Qt::PointingHandCursor);
+    moreBtn_->setIcon(Icons::icon(Icons::More, 20, hdrIcon));
+    moreBtn_->setIconSize(QSize(20, 20));
+    chl->addWidget(searchBtn);
+    chl->addWidget(callBtn);
+    chl->addWidget(moreBtn_);
+    connect(searchBtn, &QPushButton::clicked, this, &ChatPage::toggleSearch);
+    connect(callBtn, &QPushButton::clicked, this, &ChatPage::startCall);
+    connect(moreBtn_, &QPushButton::clicked, this, &ChatPage::showChatMenu);
+
     msgScroll_ = new QScrollArea(conv);
     msgScroll_->setObjectName(QStringLiteral("msgArea"));
     msgScroll_->setWidgetResizable(true);
@@ -478,6 +510,33 @@ QMenu::separator { height:1px; background:rgba(255,255,255,0.08); margin:4px 8px
     composerStack_->setCurrentIndex(0);
 
     cvl->addWidget(convHeader);
+
+    // Строка поиска сообщений (скрыта по умолчанию).
+    searchBar_ = new QWidget(conv);
+    searchBar_->setObjectName(QStringLiteral("searchBar"));
+    auto* sbl = new QHBoxLayout(searchBar_);
+    sbl->setContentsMargins(12, 8, 8, 8);
+    sbl->setSpacing(8);
+    msgSearch_ = new QLineEdit(searchBar_);
+    msgSearch_->setObjectName(QStringLiteral("msgSearch"));
+    msgSearch_->setPlaceholderText(QStringLiteral("Поиск в этом чате…"));
+    searchCount_ = new QLabel(searchBar_);
+    searchCount_->setStyleSheet(QStringLiteral("color:#726C82;font-size:12px;"));
+    auto* searchClose = new QPushButton(searchBar_);
+    searchClose->setObjectName(QStringLiteral("hdrBtn"));
+    searchClose->setCursor(Qt::PointingHandCursor);
+    searchClose->setText(QStringLiteral("✕"));
+    searchClose->setStyleSheet(QStringLiteral(
+        "#hdrBtn{color:#ACA6BD;font-size:16px;} #hdrBtn:hover{color:#F3F1F8;}"));
+    sbl->addWidget(msgSearch_, 1);
+    sbl->addWidget(searchCount_);
+    sbl->addWidget(searchClose);
+    searchBar_->hide();
+    cvl->addWidget(searchBar_);
+    connect(msgSearch_, &QLineEdit::textChanged, this,
+            [this](const QString& q) { renderMessages(q.trimmed()); });
+    connect(searchClose, &QPushButton::clicked, this, &ChatPage::toggleSearch);
+
     cvl->addWidget(msgScroll_, 1);
     cvl->addWidget(composerBar);
 
@@ -501,6 +560,13 @@ QMenu::separator { height:1px; background:rgba(255,255,255,0.08); margin:4px 8px
     connect(attachBtn_, &QPushButton::clicked, this, &ChatPage::onAttachClicked);
     connect(timerBtn_, &QPushButton::clicked, this, &ChatPage::onTimerClicked);
     connect(api_, &ApiClient::fileUploaded, this, &ChatPage::onFileUploaded);
+    connect(api_, &ApiClient::contactRenamed, this,
+            [this](const QString& cid, const QString& name, bool ok) {
+        if (!ok) return;
+        const int idx = indexOfChat(cid);
+        if (idx >= 0) { chats_[idx].displayName = name; rebuildChatList(); }
+        if (cid == currentPeerId_) { currentPeerName_ = name; peerName_->setText(name); }
+    });
 }
 
 void ChatPage::load() {
@@ -720,14 +786,22 @@ bool ChatPage::eventFilter(QObject* obj, QEvent* e) {
 
 void ChatPage::onMessagesLoaded(const QString& friendId, const QList<ChatMessage>& messages) {
     if (friendId != currentPeerId_) return;
-    clearMessages();
-    // Сервер отдаёт историю в порядке DESC (новые первыми) — разворачиваем в
-    // хронологию: старые сверху, новые снизу.
-    QList<ChatMessage> ordered = messages;
-    std::sort(ordered.begin(), ordered.end(),
+    // Сервер отдаёт историю DESC — разворачиваем в хронологию (старые сверху).
+    currentMessages_ = messages;
+    std::sort(currentMessages_.begin(), currentMessages_.end(),
               [](const ChatMessage& a, const ChatMessage& b) { return a.createdAt < b.createdAt; });
+    renderMessages(msgSearch_ && searchBar_->isVisible() ? msgSearch_->text().trimmed() : QString());
+    scrollToBottom();
+}
+
+void ChatPage::renderMessages(const QString& filter) {
+    clearMessages();
+    const QString f = filter.toLower();
+    int matches = 0;
     QString lastDay;
-    for (const ChatMessage& m : ordered) {
+    for (const ChatMessage& m : currentMessages_) {
+        if (!f.isEmpty() && !m.content.toLower().contains(f)) continue;
+        ++matches;
         const QString day = m.createdAt.left(10);
         if (!day.isEmpty() && day != lastDay) {
             const QString lbl = dateLabel(m.createdAt);
@@ -737,7 +811,9 @@ void ChatPage::onMessagesLoaded(const QString& friendId, const QList<ChatMessage
         if (!m.id.isEmpty()) shownIds_.insert(m.id);
         addBubble(m);
     }
-    updateGreeting();
+    if (searchCount_)
+        searchCount_->setText(f.isEmpty() ? QString() : QStringLiteral("Найдено: %1").arg(matches));
+    if (f.isEmpty()) updateGreeting();
     scrollToBottom();
 }
 
@@ -996,8 +1072,10 @@ void ChatPage::onSendClicked() {
     m.time = QTime::currentTime().toString(QStringLiteral("HH:mm"));
     m.id = tempId;
     m.ttlSeconds = disappearTtl_;
+    m.createdAt = QDateTime::currentDateTime().toString(Qt::ISODate);
     shownIds_.insert(tempId);
 
+    currentMessages_.append(m);
     addBubble(m);
     scrollToBottom();
     composer_->clear();
@@ -1023,6 +1101,10 @@ void ChatPage::onWsMessage(const QString& peerId, const ChatMessage& msgIn, cons
         auto* sb = msgScroll_->verticalScrollBar();
         const bool nearBottom = (sb->maximum() - sb->value()) < 140;
         if (!msg.id.isEmpty()) shownIds_.insert(msg.id);
+        if (!msg.content.startsWith(ChecklistProto::kUpdatePrefix)) {
+            if (msg.createdAt.isEmpty()) msg.createdAt = QDateTime::currentDateTime().toString(Qt::ISODate);
+            currentMessages_.append(msg);
+        }
         addBubble(msg);
         if (nearBottom || msg.sent) scrollToBottom();   // не дёргаем, если читаешь историю
     }
@@ -1173,6 +1255,8 @@ void ChatPage::pickAndSendFile() {
     m.fileSize = bytes.size();
     m.filePath = fn;   // локальный путь
     m.time = QTime::currentTime().toString(QStringLiteral("HH:mm"));
+    m.createdAt = QDateTime::currentDateTime().toString(Qt::ISODate);
+    currentMessages_.append(m);
     addBubble(m);
     scrollToBottom();
 
@@ -1201,6 +1285,8 @@ void ChatPage::openChecklistDialog() {
         m.messageType = QStringLiteral("text");
         m.content = content;
         m.time = QTime::currentTime().toString(QStringLiteral("HH:mm"));
+        m.createdAt = QDateTime::currentDateTime().toString(Qt::ISODate);
+        currentMessages_.append(m);
         addBubble(m);
         scrollToBottom();
 
@@ -1242,7 +1328,8 @@ void ChatPage::sendLocation() {
         m.messageType = QStringLiteral("location");
         m.content = content;
         m.time = QTime::currentTime().toString(QStringLiteral("HH:mm"));
-        if (pendingLocReceiver_ == currentPeerId_) { addBubble(m); scrollToBottom(); }
+        m.createdAt = QDateTime::currentDateTime().toString(Qt::ISODate);
+        if (pendingLocReceiver_ == currentPeerId_) { currentMessages_.append(m); addBubble(m); scrollToBottom(); }
 
         api_->sendRaw(pendingLocReceiver_, content, QStringLiteral("location"), tempId);
         bumpChat(pendingLocReceiver_, QStringLiteral("Геопозиция"), m.time, false);
@@ -1257,6 +1344,107 @@ void ChatPage::onFileUploaded(const QString& filePath, const QString& fileName,
     api_->sendFile(pendingFileReceiver_, filePath, fileName, fileSize, caption, tempId);
     bumpChat(pendingFileReceiver_, caption,
              QTime::currentTime().toString(QStringLiteral("HH:mm")), false);
+}
+
+// ── Поиск / звонок / меню / переименование ───────────────────────────────────
+
+void ChatPage::toggleSearch() {
+    if (currentPeerId_.isEmpty()) return;
+    const bool show = !searchBar_->isVisible();
+    searchBar_->setVisible(show);
+    if (show) {
+        msgSearch_->clear();
+        msgSearch_->setFocus();
+    } else {
+        msgSearch_->clear();
+        renderMessages(QString());
+    }
+}
+
+static void showInfoOverlay(QWidget* host, const QString& title, const QString& text) {
+    auto* ov = new ModalOverlay(host, 360);
+    auto* t = new QLabel(title, ov->card());
+    t->setStyleSheet(QStringLiteral("color:#F3F1F8;font-size:17px;font-weight:800;"));
+    auto* b = new QLabel(text, ov->card());
+    b->setWordWrap(true);
+    b->setStyleSheet(QStringLiteral("color:#ACA6BD;font-size:14px;"));
+    auto* ok = new QPushButton(QStringLiteral("Понятно"), ov->card());
+    ok->setCursor(Qt::PointingHandCursor);
+    ok->setStyleSheet(QStringLiteral(
+        "QPushButton{border:none;border-radius:10px;min-height:42px;color:#fff;font-weight:700;"
+        "background:qlineargradient(x1:0,y1:0,x2:1,y2:1,stop:0 #8B5CF6,stop:1 #6D28D9);}"
+        "QPushButton:hover{background:#9B72F8;}"));
+    ov->cardLayout()->addWidget(t);
+    ov->cardLayout()->addWidget(b);
+    ov->cardLayout()->addWidget(ok);
+    QObject::connect(ok, &QPushButton::clicked, ov, &ModalOverlay::closeAnimated);
+    ov->showAnimated();
+}
+
+void ChatPage::startCall() {
+    if (currentPeerId_.isEmpty()) return;
+    showInfoOverlay(window(), QStringLiteral("Звонки"),
+        QStringLiteral("Голосовые и видеозвонки появятся в одном из ближайших обновлений: "
+                       "они требуют нативной WebRTC-подсистемы (захват аудио/видео, TURN, "
+                       "сигналинг). Бэкенд уже готов — доделываем клиент."));
+}
+
+void ChatPage::showChatMenu() {
+    if (currentPeerId_.isEmpty()) return;
+    const QColor mclr(0xAC, 0xA6, 0xBD);
+    QMenu menu(this);
+    QAction* rename = menu.addAction(Icons::icon(Icons::Pencil, 18, mclr),
+                                     QStringLiteral("Изменить имя контакта"));
+    QAction* secret = menu.addAction(Icons::icon(Icons::Lock, 18, mclr),
+                                     QStringLiteral("Секретный чат (скоро)"));
+    connect(rename, &QAction::triggered, this, &ChatPage::openRenameDialog);
+    connect(secret, &QAction::triggered, this, [this]() {
+        showInfoOverlay(window(), QStringLiteral("Секретный чат"),
+            QStringLiteral("Секретные чаты со сквозным шифрованием (Signal-протокол) — "
+                           "в работе. На сервере поддержка есть; нужен клиентский E2EE "
+                           "(обмен ключами, шифрование сообщений)."));
+    });
+    menu.exec(moreBtn_->mapToGlobal(QPoint(0, moreBtn_->height() + 4)));
+}
+
+void ChatPage::openRenameDialog() {
+    if (currentPeerId_.isEmpty()) return;
+    auto* ov = new ModalOverlay(window(), 380);
+    auto* t = new QLabel(QStringLiteral("Имя контакта"), ov->card());
+    t->setStyleSheet(QStringLiteral("color:#F3F1F8;font-size:17px;font-weight:800;"));
+    auto* edit = new QLineEdit(currentPeerName_, ov->card());
+    edit->setStyleSheet(QStringLiteral(
+        "QLineEdit{background:#1A1822;border:1px solid rgba(255,255,255,0.10);border-radius:10px;"
+        "min-height:40px;padding:0 12px;color:#F3F1F8;font-size:14px;}"
+        "QLineEdit:focus{border:1px solid #8B5CF6;}"));
+    auto* row = new QHBoxLayout();
+    row->addStretch();
+    auto* cancel = new QPushButton(QStringLiteral("Отмена"), ov->card());
+    cancel->setCursor(Qt::PointingHandCursor);
+    cancel->setStyleSheet(QStringLiteral(
+        "QPushButton{border:1px solid rgba(255,255,255,0.14);border-radius:10px;padding:9px 14px;color:#ACA6BD;background:transparent;}"
+        "QPushButton:hover{color:#F3F1F8;border-color:#8B5CF6;}"));
+    auto* save = new QPushButton(QStringLiteral("Сохранить"), ov->card());
+    save->setCursor(Qt::PointingHandCursor);
+    save->setStyleSheet(QStringLiteral(
+        "QPushButton{border:none;border-radius:10px;padding:9px 18px;color:#fff;font-weight:700;"
+        "background:qlineargradient(x1:0,y1:0,x2:1,y2:1,stop:0 #8B5CF6,stop:1 #6D28D9);}"
+        "QPushButton:hover{background:#9B72F8;}"));
+    row->addWidget(cancel);
+    row->addWidget(save);
+    ov->cardLayout()->addWidget(t);
+    ov->cardLayout()->addWidget(edit);
+    ov->cardLayout()->addLayout(row);
+    connect(cancel, &QPushButton::clicked, ov, &ModalOverlay::closeAnimated);
+    const QString peer = currentPeerId_;
+    connect(save, &QPushButton::clicked, this, [this, ov, edit, peer]() {
+        const QString name = edit->text().trimmed();
+        if (!name.isEmpty()) api_->setContactName(peer, name);
+        ov->closeAnimated();
+    });
+    ov->showAnimated();
+    edit->setFocus();
+    edit->selectAll();
 }
 
 // ── Голосовые сообщения ──────────────────────────────────────────────────────
@@ -1327,6 +1515,8 @@ void ChatPage::onVoiceRecorded(const QString& filePath, const QString& mimeType)
     m.content = voiceLabel(pendingVoiceSecs_);   // длительность в подписи
     m.time = QTime::currentTime().toString(QStringLiteral("HH:mm"));
     if (pendingVoiceReceiver_ == currentPeerId_) {
+        m.createdAt = QDateTime::currentDateTime().toString(Qt::ISODate);
+        currentMessages_.append(m);
         addBubble(m);
         scrollToBottom();
     }

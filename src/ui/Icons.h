@@ -12,7 +12,7 @@
 namespace Icons {
 
 enum Kind { Send, Mic, Smile, Paperclip, Clock, Trash, File, Image,
-            Search, Pencil, Phone, Location, Checklist, Logout, Plus };
+            Search, Pencil, Phone, Location, Checklist, Logout, Plus, More, Lock };
 
 inline QPixmap pixmap(Kind kind, int size, const QColor& color) {
     const qreal dpr = 2.0;
@@ -153,6 +153,22 @@ inline QPixmap pixmap(Kind kind, int size, const QColor& color) {
     case Plus: {
         p.drawLine(QLineF(12, 5, 12, 19));
         p.drawLine(QLineF(5, 12, 19, 12));
+        break;
+    }
+    case More: {
+        p.setBrush(color); p.setPen(Qt::NoPen);
+        p.drawEllipse(QPointF(12, 5.5), 1.7, 1.7);
+        p.drawEllipse(QPointF(12, 12), 1.7, 1.7);
+        p.drawEllipse(QPointF(12, 18.5), 1.7, 1.7);
+        break;
+    }
+    case Lock: {
+        p.drawRoundedRect(QRectF(5, 10.5, 14, 10), 2.5, 2.5);
+        QPainterPath sh;
+        sh.moveTo(8, 10.5); sh.lineTo(8, 7.5);
+        sh.arcTo(QRectF(8, 3.5, 8, 8), 180, -180);
+        sh.lineTo(16, 10.5);
+        p.drawPath(sh);
         break;
     }
     }
