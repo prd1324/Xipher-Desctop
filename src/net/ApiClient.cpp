@@ -192,13 +192,14 @@ void ApiClient::getMessages(const QString& friendId) {
 }
 
 void ApiClient::sendMessage(const QString& receiverId, const QString& content, const QString& tempId,
-                            int ttlSeconds) {
+                            int ttlSeconds, const QString& replyTo) {
     QJsonObject body{{QStringLiteral("token"), Session::instance().token},
                      {QStringLiteral("receiver_id"), receiverId},
                      {QStringLiteral("content"), content},
                      {QStringLiteral("message_type"), QStringLiteral("text")},
                      {QStringLiteral("temp_id"), tempId}};
     if (ttlSeconds > 0) body.insert(QStringLiteral("ttl_seconds"), ttlSeconds);
+    if (!replyTo.isEmpty()) body.insert(QStringLiteral("reply_to_message_id"), replyTo);
     postJson(QStringLiteral("/api/send-message"), body,
              [this, receiverId, content, tempId](const QJsonObject& obj, bool ok, const QString& netErr) {
         if (!ok && obj.isEmpty()) { emit chatError(QStringLiteral("send"), netErr); return; }
@@ -415,24 +416,37 @@ void ApiClient::getChannelMessages(const QString& channelId) {
     });
 }
 
-void ApiClient::sendGroupMessage(const QString& groupId, const QString& content, const QString& tempId) {
-    postJson(QStringLiteral("/api/send-group-message"),
-             {{QStringLiteral("token"), Session::instance().token},
-              {QStringLiteral("group_id"), groupId},
-              {QStringLiteral("content"), content},
-              {QStringLiteral("message_type"), QStringLiteral("text")},
-              {QStringLiteral("temp_id"), tempId}},
-             [](const QJsonObject&, bool, const QString&) {});
+void ApiClient::sendGroupMessage(const QString& groupId, const QString& content, const QString& tempId,
+                                 const QString& replyTo) {
+    QJsonObject body{{QStringLiteral("token"), Session::instance().token},
+                     {QStringLiteral("group_id"), groupId},
+                     {QStringLiteral("content"), content},
+                     {QStringLiteral("message_type"), QStringLiteral("text")},
+                     {QStringLiteral("temp_id"), tempId}};
+    if (!replyTo.isEmpty()) body.insert(QStringLiteral("reply_to_message_id"), replyTo);
+    postJson(QStringLiteral("/api/send-group-message"), body, [](const QJsonObject&, bool, const QString&) {});
 }
 
-void ApiClient::sendChannelMessage(const QString& channelId, const QString& content, const QString& tempId) {
-    postJson(QStringLiteral("/api/send-channel-message"),
-             {{QStringLiteral("token"), Session::instance().token},
-              {QStringLiteral("channel_id"), channelId},
-              {QStringLiteral("content"), content},
-              {QStringLiteral("message_type"), QStringLiteral("text")},
-              {QStringLiteral("temp_id"), tempId}},
-             [](const QJsonObject&, bool, const QString&) {});
+void ApiClient::sendChannelMessage(const QString& channelId, const QString& content, const QString& tempId,
+                                   const QString& replyTo) {
+    QJsonObject body{{QStringLiteral("token"), Session::instance().token},
+                     {QStringLiteral("channel_id"), channelId},
+                     {QStringLiteral("content"), content},
+                     {QStringLiteral("message_type"), QStringLiteral("text")},
+                     {QStringLiteral("temp_id"), tempId}};
+    if (!replyTo.isEmpty()) body.insert(QStringLiteral("reply_to_message_id"), replyTo);
+    postJson(QStringLiteral("/api/send-channel-message"), body, [](const QJsonObject&, bool, const QString&) {});
+}
+
+void ApiClient::deleteMessage(const QString& messageId, ChatKind kind, const QString& peerId) {
+    QString path = QStringLiteral("/api/delete-message");
+    QJsonObject body{{QStringLiteral("token"), Session::instance().token},
+                     {QStringLiteral("message_id"), messageId}};
+    if (kind == ChatKind::Group)        { path = QStringLiteral("/api/delete-group-message");   body.insert(QStringLiteral("group_id"), peerId); }
+    else if (kind == ChatKind::Channel) { path = QStringLiteral("/api/delete-channel-message"); body.insert(QStringLiteral("channel_id"), peerId); }
+    postJson(path, body, [this](const QJsonObject& o, bool ok, const QString&) {
+        emit messageDeleted(ok && o.value(QStringLiteral("success")).toBool(false));
+    });
 }
 
 void ApiClient::publicDirectory(const QString& category, const QString& search, int offset) {

@@ -23,6 +23,8 @@
 
 #include <QMenu>
 #include <QAction>
+#include <QApplication>
+#include <QClipboard>
 #include <QEvent>
 #include <QFileDialog>
 #include <QFileInfo>
@@ -250,6 +252,7 @@ ChatPage::ChatPage(ApiClient* api, WsClient* ws, QWidget* parent)
         rebuildChatList();
     });
     connect(api_, &ApiClient::messageSent,     this, &ChatPage::onMessageSent);
+    connect(api_, &ApiClient::messageDeleted,  this, [this](bool ok){ if (ok) reloadCurrentMessages(); });
     connect(ws_,  &WsClient::newMessage,       this, &ChatPage::onWsMessage);
     connect(api_, &ApiClient::voiceUploaded,   this, &ChatPage::onVoiceUploaded);
     connect(api_, &ApiClient::fileFetched,     this, &ChatPage::onFileFetched);
@@ -318,6 +321,10 @@ void ChatPage::buildUi() {
 #chatList QScrollBar::add-line:vertical, #chatList QScrollBar::sub-line:vertical { height:0; }
 #chatList QScrollBar::add-page:vertical, #chatList QScrollBar::sub-page:vertical { background:transparent; }
 #composerBar { background:#131218; border-top:1px solid rgba(255,255,255,0.10); }
+#replyBar { background:#131218; border-top:1px solid rgba(255,255,255,0.06); }
+#replyBarText { color:#ACA6BD; font-size:13px; }
+#replyClose { background:transparent; border:none; color:#726C82; font-size:14px; }
+#replyClose:hover { color:#F3F1F8; }
 #composer {
     background:#1A1822; border:1px solid rgba(255,255,255,0.10); border-radius:20px;
     min-height:44px; padding:0 18px; color:#F3F1F8; font-size:15px;
@@ -544,6 +551,28 @@ QMenu::separator { height:1px; background:rgba(255,255,255,0.08); margin:4px 8px
     composerBar->setObjectName(QStringLiteral("composerBar"));
     auto* cblOuter = new QVBoxLayout(composerBar);
     cblOuter->setContentsMargins(0, 0, 0, 0);
+
+    // Полоса «ответ на …» над вводом.
+    replyBar_ = new QWidget(composerBar);
+    replyBar_->setObjectName(QStringLiteral("replyBar"));
+    auto* rbl = new QHBoxLayout(replyBar_);
+    rbl->setContentsMargins(16, 6, 12, 6);
+    rbl->setSpacing(10);
+    auto* rbIcon = new QLabel(replyBar_);
+    rbIcon->setPixmap(Icons::pixmap(Icons::Pencil, 16, QColor(0x8B, 0x5C, 0xF6)));
+    replyBarText_ = new QLabel(replyBar_);
+    replyBarText_->setObjectName(QStringLiteral("replyBarText"));
+    auto* rbClose = new QPushButton(QStringLiteral("✕"), replyBar_);
+    rbClose->setObjectName(QStringLiteral("replyClose"));
+    rbClose->setCursor(Qt::PointingHandCursor);
+    rbClose->setFixedSize(24, 24);
+    connect(rbClose, &QPushButton::clicked, this, &ChatPage::clearReplyTo);
+    rbl->addWidget(rbIcon);
+    rbl->addWidget(replyBarText_, 1);
+    rbl->addWidget(rbClose);
+    replyBar_->setVisible(false);
+    cblOuter->addWidget(replyBar_);
+
     composerStack_ = new QStackedWidget(composerBar);
     cblOuter->addWidget(composerStack_);
 
@@ -912,6 +941,7 @@ void ChatPage::onChatClicked() {
 }
 
 void ChatPage::openChat(const Chat& chat) {
+    clearReplyTo();
     currentPeerId_   = chat.id;
     currentPeerName_ = chat.displayName;
     currentKind_     = chat.kind;
@@ -1074,6 +1104,17 @@ void ChatPage::addBubble(const ChatMessage& msg) {
     bl->setContentsMargins(14, 8, 14, 6);
     bl->setSpacing(2);
 
+    // Контекстное меню сообщения (ответить / копировать / удалить).
+    bubble->setContextMenuPolicy(Qt::CustomContextMenu);
+    bubble->setProperty("msgId", msg.id);
+    bubble->setProperty("msgText", msg.content);
+    bubble->setProperty("msgSent", msg.sent);
+    bubble->setProperty("msgAuthor", msg.sent ? QStringLiteral("Вы")
+                        : (msg.senderName.isEmpty() ? currentPeerName_ : msg.senderName));
+    connect(bubble, &QWidget::customContextMenuRequested, this, [this, bubble](const QPoint& p) {
+        showMessageMenu(bubble, bubble->mapToGlobal(p));
+    });
+
     // Reply-превью (если есть)
     if (!msg.replySnippet.isEmpty()) {
         auto* reply = new QLabel(
@@ -1228,6 +1269,7 @@ void ChatPage::addBubble(const ChatMessage& msg) {
         auto* text = new QLabel(msg.content, bubble);
         text->setWordWrap(true);
         text->setTextInteractionFlags(Qt::TextSelectableByMouse);
+        text->setContextMenuPolicy(Qt::NoContextMenu);   // ПКМ → меню баббла, не дефолтное
         text->setStyleSheet(QString("color:%1;font-size:15px;")
                                 .arg(msg.sent ? QStringLiteral("#F0ECFA") : QStringLiteral("#F3F1F8")));
         bl->addWidget(text);
@@ -1302,10 +1344,58 @@ void ChatPage::scrollToBottom() {
     sb->setValue(sb->maximum());
 }
 
+void ChatPage::showMessageMenu(QWidget* bubble, const QPoint& pos) {
+    const QString id     = bubble->property("msgId").toString();
+    const QString text   = bubble->property("msgText").toString();
+    const bool    sent   = bubble->property("msgSent").toBool();
+    const QString author = bubble->property("msgAuthor").toString();
+
+    QMenu menu(this);
+    QAction* reply = menu.addAction(QStringLiteral("Ответить"));
+    QAction* copy = nullptr;
+    if (!text.isEmpty() && !text.startsWith(QStringLiteral("[[")))
+        copy = menu.addAction(QStringLiteral("Копировать"));
+    QAction* del = nullptr;
+    if (sent && !id.isEmpty() && !id.startsWith(QStringLiteral("tmp_"))) {
+        menu.addSeparator();
+        del = menu.addAction(QStringLiteral("Удалить"));
+    }
+    QAction* ch = menu.exec(pos);
+    if (!ch) return;
+    if (ch == reply)      setReplyTo(id, author, text);
+    else if (ch == copy)  QApplication::clipboard()->setText(text);
+    else if (ch == del)   api_->deleteMessage(id, currentKind_, currentPeerId_);
+}
+
+void ChatPage::setReplyTo(const QString& id, const QString& author, const QString& text) {
+    if (id.isEmpty() || id.startsWith(QStringLiteral("tmp_"))) return;
+    replyToId_ = id;
+    replyToName_ = author;
+    replyToText_ = text;
+    if (replyBarText_)
+        replyBarText_->setText(QStringLiteral("Ответ %1: %2")
+            .arg(author, elide(text, replyBarText_->font(), 300)));
+    if (replyBar_) replyBar_->setVisible(true);
+    if (composer_) composer_->setFocus();
+}
+
+void ChatPage::clearReplyTo() {
+    replyToId_.clear(); replyToName_.clear(); replyToText_.clear();
+    if (replyBar_) replyBar_->setVisible(false);
+}
+
+void ChatPage::reloadCurrentMessages() {
+    if (currentPeerId_.isEmpty()) return;
+    if (currentKind_ == ChatKind::Group)        api_->getGroupMessages(currentPeerId_);
+    else if (currentKind_ == ChatKind::Channel) api_->getChannelMessages(currentPeerId_);
+    else                                        api_->getMessages(currentPeerId_);
+}
+
 void ChatPage::onSendClicked() {
     const QString text = composer_->text().trimmed();
     if (text.isEmpty() || currentPeerId_.isEmpty()) return;
 
+    const QString replyTo = replyToId_;
     const QString tempId = QStringLiteral("tmp_%1").arg(++tempCounter_);
     ChatMessage m;
     m.content = text;
@@ -1315,16 +1405,18 @@ void ChatPage::onSendClicked() {
     m.id = tempId;
     m.ttlSeconds = disappearTtl_;
     m.createdAt = QDateTime::currentDateTime().toString(Qt::ISODate);
+    if (!replyTo.isEmpty()) { m.replyAuthor = replyToName_; m.replySnippet = replyToText_; }
     shownIds_.insert(tempId);
 
     currentMessages_.append(m);
     addBubble(m);
     scrollToBottom();
     composer_->clear();
+    clearReplyTo();
 
-    if (currentKind_ == ChatKind::Group)        api_->sendGroupMessage(currentPeerId_, text, tempId);
-    else if (currentKind_ == ChatKind::Channel) api_->sendChannelMessage(currentPeerId_, text, tempId);
-    else                                        api_->sendMessage(currentPeerId_, text, tempId, disappearTtl_);
+    if (currentKind_ == ChatKind::Group)        api_->sendGroupMessage(currentPeerId_, text, tempId, replyTo);
+    else if (currentKind_ == ChatKind::Channel) api_->sendChannelMessage(currentPeerId_, text, tempId, replyTo);
+    else                                        api_->sendMessage(currentPeerId_, text, tempId, disappearTtl_, replyTo);
     bumpChat(currentPeerId_, text, m.time, /*incrementUnread*/ false);
 }
 

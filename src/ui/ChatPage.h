@@ -98,6 +98,10 @@ private:
     int  indexOfChat(const QString& id) const;
     void openChat(const Chat& chat);
     void addBubble(const ChatMessage& msg);
+    void showMessageMenu(QWidget* bubble, const QPoint& pos);
+    void setReplyTo(const QString& id, const QString& author, const QString& text);
+    void clearReplyTo();
+    void reloadCurrentMessages();
     void clearMessages();
     void renderMessages(const QString& filter);   // отрисовать (с фильтром поиска)
     void updateGreeting();   // показать/скрыть пустой-чат приветствие
@@ -140,6 +144,9 @@ private:
     RecordingBar* recBar_    = nullptr;
     EmojiPicker*  emojiPicker_ = nullptr;
     int           disappearTtl_ = 0;   // сек, 0 = выкл (пока UI-состояние)
+    QWidget*      replyBar_     = nullptr;   // полоса «ответ на…» над вводом
+    QLabel*       replyBarText_ = nullptr;
+    QString       replyToId_, replyToName_, replyToText_;
 
     // Файлы: отложенная отправка/открытие
     QString pendingFileReceiver_;

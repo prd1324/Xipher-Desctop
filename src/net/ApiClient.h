@@ -42,7 +42,8 @@ public:
     void getChats();
     void getMessages(const QString& friendId);
     void sendMessage(const QString& receiverId, const QString& content, const QString& tempId,
-                     int ttlSeconds = 0);
+                     int ttlSeconds = 0, const QString& replyTo = QString());
+    void deleteMessage(const QString& messageId, ChatKind kind, const QString& peerId);
     // Универсальная отправка с произвольным message_type (location/checklist/…).
     void sendRaw(const QString& receiverId, const QString& content,
                  const QString& messageType, const QString& tempId);
@@ -76,8 +77,10 @@ public:
     void uploadChannelAvatar(const QString& channelId, const QByteArray& bytes, const QString& fileName);
     void getGroupMessages(const QString& groupId);
     void getChannelMessages(const QString& channelId);
-    void sendGroupMessage(const QString& groupId, const QString& content, const QString& tempId);
-    void sendChannelMessage(const QString& channelId, const QString& content, const QString& tempId);
+    void sendGroupMessage(const QString& groupId, const QString& content, const QString& tempId,
+                          const QString& replyTo = QString());
+    void sendChannelMessage(const QString& channelId, const QString& content, const QString& tempId,
+                            const QString& replyTo = QString());
     void publicDirectory(const QString& category, const QString& search, int offset);
     void joinPublic(const QString& id, const QString& type);   // type: "channel"|"group"
 
@@ -135,6 +138,7 @@ signals:
     void chatsLoaded(const QList<Chat>& chats);
     void messagesLoaded(const QString& friendId, const QList<ChatMessage>& messages);
     void messageSent(const ChatMessage& message, const QString& receiverId, const QString& tempId);
+    void messageDeleted(bool ok);
     void chatError(const QString& context, const QString& message);
 
     // voiceUploaded → отдаёт путь на сервере; затем зовём sendVoice.
