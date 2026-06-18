@@ -81,6 +81,21 @@ public:
     void publicDirectory(const QString& category, const QString& search, int offset);
     void joinPublic(const QString& id, const QString& type);   // type: "channel"|"group"
 
+    // Управление каналом/группой.
+    void getChannelInfo(const QString& channelId);
+    void getMembers(const QString& peerId, bool isChannel);
+    void updatePeerName(const QString& peerId, bool isChannel, const QString& name);
+    void updatePeerDescription(const QString& peerId, bool isChannel, const QString& desc);
+    void setPeerCustomLink(const QString& peerId, bool isChannel, const QString& link);
+    void unsubscribeChannel(const QString& channelId);
+    void leaveGroup(const QString& groupId);
+    void deleteChannel(const QString& channelId);
+    void deleteGroup(const QString& groupId);
+    void createInvite(const QString& peerId, bool isChannel);
+    void kickGroupMember(const QString& groupId, const QString& userId);
+    void setGroupMemberRole(const QString& groupId, const QString& userId, const QString& role);
+    void banChannelMember(const QString& channelId, const QString& userId, bool banned);
+
     // Папки чатов (синхронизация с сервером).
     void getChatFolders();
     void setChatFolders(const QList<Folder>& folders);
@@ -143,6 +158,10 @@ signals:
     void publicJoined(bool ok, const QString& id);
     void foldersLoaded(const QList<Folder>& folders);
     void foldersSaved(bool ok);
+    void channelInfoLoaded(const QJsonObject& info);
+    void membersLoaded(const QString& peerId, const QList<Member>& members);
+    void peerActionDone(bool ok, const QString& message);
+    void inviteLinkReady(const QString& url);
 
     // Настройки.
     void profileUpdated(bool ok, const QString& message);

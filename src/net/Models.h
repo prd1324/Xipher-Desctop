@@ -77,6 +77,15 @@ inline QString chatKeyFor(const Chat& c) {
     return t + QStringLiteral(":") + c.id;
 }
 
+// Участник группы/канала (/api/get-group-members, /api/get-channel-members).
+struct Member {
+    QString id;        // user_id
+    QString username;
+    QString role;      // creator | owner | admin | member | subscriber
+    bool    isMuted = false;
+    bool    isBanned = false;
+};
+
 // Результат поиска пользователей (/api/search-users → users[]).
 struct UserHit {
     QString id;            // user_id

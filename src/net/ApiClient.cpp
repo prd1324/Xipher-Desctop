@@ -473,6 +473,142 @@ void ApiClient::joinPublic(const QString& id, const QString& type) {
     });
 }
 
+// ── Управление каналом/группой ───────────────────────────────────────────────
+void ApiClient::getChannelInfo(const QString& channelId) {
+    postJson(QStringLiteral("/api/get-channel-info"),
+             {{QStringLiteral("token"), Session::instance().token},
+              {QStringLiteral("channel_id"), channelId}},
+             [this](const QJsonObject& obj, bool, const QString&) { emit channelInfoLoaded(obj); });
+}
+
+void ApiClient::getMembers(const QString& peerId, bool isChannel) {
+    const QString path = isChannel ? QStringLiteral("/api/get-channel-members")
+                                   : QStringLiteral("/api/get-group-members");
+    const QString idKey = isChannel ? QStringLiteral("channel_id") : QStringLiteral("group_id");
+    postJson(path, {{QStringLiteral("token"), Session::instance().token}, {idKey, peerId}},
+             [this, peerId](const QJsonObject& obj, bool, const QString&) {
+        QList<Member> list;
+        for (const QJsonValue& v : obj.value(QStringLiteral("members")).toArray()) {
+            const QJsonObject o = v.toObject();
+            Member m;
+            m.id       = o.value(QStringLiteral("user_id")).toString();
+            m.username = o.value(QStringLiteral("username")).toString();
+            m.role     = o.value(QStringLiteral("role")).toString();
+            m.isMuted  = o.value(QStringLiteral("is_muted")).toBool(false);
+            m.isBanned = o.value(QStringLiteral("is_banned")).toBool(false);
+            list.append(m);
+        }
+        emit membersLoaded(peerId, list);
+    });
+}
+
+void ApiClient::updatePeerName(const QString& peerId, bool isChannel, const QString& name) {
+    QJsonObject body{{QStringLiteral("token"), Session::instance().token}};
+    if (isChannel) { body.insert(QStringLiteral("channel_id"), peerId); body.insert(QStringLiteral("new_name"), name); }
+    else           { body.insert(QStringLiteral("group_id"), peerId);   body.insert(QStringLiteral("name"), name); }
+    postJson(isChannel ? QStringLiteral("/api/update-channel-name") : QStringLiteral("/api/update-group-name"),
+             body, [this](const QJsonObject& o, bool ok, const QString& e) {
+        emit peerActionDone(ok && o.value(QStringLiteral("success")).toBool(false),
+                            o.value(QStringLiteral("error")).toString(e));
+    });
+}
+
+void ApiClient::updatePeerDescription(const QString& peerId, bool isChannel, const QString& desc) {
+    QJsonObject body{{QStringLiteral("token"), Session::instance().token}};
+    if (isChannel) { body.insert(QStringLiteral("channel_id"), peerId); body.insert(QStringLiteral("new_description"), desc); }
+    else           { body.insert(QStringLiteral("group_id"), peerId);   body.insert(QStringLiteral("description"), desc); }
+    postJson(isChannel ? QStringLiteral("/api/update-channel-description") : QStringLiteral("/api/update-group-description"),
+             body, [this](const QJsonObject& o, bool ok, const QString& e) {
+        emit peerActionDone(ok && o.value(QStringLiteral("success")).toBool(false),
+                            o.value(QStringLiteral("error")).toString(e));
+    });
+}
+
+void ApiClient::setPeerCustomLink(const QString& peerId, bool isChannel, const QString& link) {
+    QJsonObject body{{QStringLiteral("token"), Session::instance().token},
+                     {QStringLiteral("custom_link"), link}};
+    body.insert(isChannel ? QStringLiteral("channel_id") : QStringLiteral("group_id"), peerId);
+    postJson(isChannel ? QStringLiteral("/api/set-channel-custom-link") : QStringLiteral("/api/set-group-custom-link"),
+             body, [this](const QJsonObject& o, bool ok, const QString& e) {
+        emit peerActionDone(ok && o.value(QStringLiteral("success")).toBool(false),
+                            o.value(QStringLiteral("error")).toString(e));
+    });
+}
+
+void ApiClient::unsubscribeChannel(const QString& channelId) {
+    postJson(QStringLiteral("/api/unsubscribe-channel"),
+             {{QStringLiteral("token"), Session::instance().token}, {QStringLiteral("channel_id"), channelId}},
+             [this](const QJsonObject& o, bool ok, const QString& e) {
+        emit peerActionDone(ok && o.value(QStringLiteral("success")).toBool(false), e);
+    });
+}
+
+void ApiClient::leaveGroup(const QString& groupId) {
+    postJson(QStringLiteral("/api/leave-group"),
+             {{QStringLiteral("token"), Session::instance().token}, {QStringLiteral("group_id"), groupId}},
+             [this](const QJsonObject& o, bool ok, const QString& e) {
+        emit peerActionDone(ok && o.value(QStringLiteral("success")).toBool(false), e);
+    });
+}
+
+void ApiClient::deleteChannel(const QString& channelId) {
+    postJson(QStringLiteral("/api/delete-channel"),
+             {{QStringLiteral("token"), Session::instance().token}, {QStringLiteral("channel_id"), channelId}},
+             [this](const QJsonObject& o, bool ok, const QString& e) {
+        emit peerActionDone(ok && o.value(QStringLiteral("success")).toBool(false), e);
+    });
+}
+
+void ApiClient::deleteGroup(const QString& groupId) {
+    postJson(QStringLiteral("/api/delete-group"),
+             {{QStringLiteral("token"), Session::instance().token}, {QStringLiteral("group_id"), groupId}},
+             [this](const QJsonObject& o, bool ok, const QString& e) {
+        emit peerActionDone(ok && o.value(QStringLiteral("success")).toBool(false), e);
+    });
+}
+
+void ApiClient::createInvite(const QString& peerId, bool isChannel) {
+    QJsonObject body{{QStringLiteral("token"), Session::instance().token}};
+    body.insert(isChannel ? QStringLiteral("channel_id") : QStringLiteral("group_id"), peerId);
+    postJson(isChannel ? QStringLiteral("/api/create-channel-invite") : QStringLiteral("/api/create-group-invite"),
+             body, [this](const QJsonObject& o, bool, const QString&) {
+        QString tok = o.value(QStringLiteral("token")).toString();
+        if (tok.isEmpty()) tok = o.value(QStringLiteral("invite_link")).toString();
+        if (tok.isEmpty()) tok = o.value(QStringLiteral("data")).toObject().value(QStringLiteral("invite_link")).toString();
+        if (tok.isEmpty()) { emit inviteLinkReady(QString()); return; }
+        emit inviteLinkReady(base_ + QStringLiteral("/join/") + tok);
+    });
+}
+
+void ApiClient::kickGroupMember(const QString& groupId, const QString& userId) {
+    postJson(QStringLiteral("/api/kick-member"),
+             {{QStringLiteral("token"), Session::instance().token},
+              {QStringLiteral("group_id"), groupId}, {QStringLiteral("target_user_id"), userId}},
+             [this](const QJsonObject& o, bool ok, const QString& e) {
+        emit peerActionDone(ok && o.value(QStringLiteral("success")).toBool(false), e);
+    });
+}
+
+void ApiClient::setGroupMemberRole(const QString& groupId, const QString& userId, const QString& role) {
+    postJson(QStringLiteral("/api/set-admin-permissions"),
+             {{QStringLiteral("token"), Session::instance().token},
+              {QStringLiteral("group_id"), groupId}, {QStringLiteral("target_user_id"), userId},
+              {QStringLiteral("role"), role}},
+             [this](const QJsonObject& o, bool ok, const QString& e) {
+        emit peerActionDone(ok && o.value(QStringLiteral("success")).toBool(false), e);
+    });
+}
+
+void ApiClient::banChannelMember(const QString& channelId, const QString& userId, bool banned) {
+    postJson(QStringLiteral("/api/ban-channel-member"),
+             {{QStringLiteral("token"), Session::instance().token},
+              {QStringLiteral("channel_id"), channelId}, {QStringLiteral("target_user_id"), userId},
+              {QStringLiteral("banned"), banned ? QStringLiteral("true") : QStringLiteral("false")}},
+             [this](const QJsonObject& o, bool ok, const QString& e) {
+        emit peerActionDone(ok && o.value(QStringLiteral("success")).toBool(false), e);
+    });
+}
+
 void ApiClient::getChatFolders() {
     postJson(QStringLiteral("/api/get-chat-folders"), {{QStringLiteral("token"), Session::instance().token}},
              [this](const QJsonObject& obj, bool, const QString&) {

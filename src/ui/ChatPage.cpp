@@ -4,6 +4,7 @@
 #include "ui/GroupChannelDialogs.h"
 #include "ui/FolderDialog.h"
 #include "ui/ContactsPanel.h"
+#include "ui/PeerInfoPanel.h"
 #include "net/Prefs.h"
 #include "ui/VoiceMessageWidget.h"
 #include "ui/RecordingBar.h"
@@ -975,8 +976,23 @@ bool ChatPage::eventFilter(QObject* obj, QEvent* e) {
     if (greeting_ && obj == msgScroll_->viewport() && e->type() == QEvent::Resize) {
         if (greeting_->isVisible()) greeting_->setGeometry(msgScroll_->viewport()->rect());
     }
-    // Клик по шапке диалога → профиль собеседника.
+    // Клик по шапке диалога → профиль / инфо канала-группы.
     if (obj == peerHeader_ && e->type() == QEvent::MouseButtonRelease && !currentPeerId_.isEmpty()) {
+        if (currentKind_ == ChatKind::Group || currentKind_ == ChatKind::Channel) {
+            QString av;
+            const int idx = indexOfChat(currentPeerId_);
+            if (idx >= 0) av = chats_[idx].avatarUrl;
+            auto* info = new PeerInfoPanel(api_, currentPeerId_, currentKind_ == ChatKind::Channel,
+                                           currentPeerName_, av, window());
+            connect(info, &PeerInfoPanel::changed, this, [this]() { api_->getGroups(); api_->getChannels(); });
+            connect(info, &PeerInfoPanel::leftPeer, this, [this](const QString&) {
+                api_->getGroups(); api_->getChannels();
+                convStack_->setCurrentIndex(0);
+                currentPeerId_.clear();
+            });
+            info->showAnimated();
+            return true;
+        }
         if (!profilePanel_) {
             profilePanel_ = new ProfilePanel(api_, window());
             connect(profilePanel_, &ProfilePanel::messageRequested, this,
