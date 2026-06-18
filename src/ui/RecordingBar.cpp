@@ -1,4 +1,5 @@
 #include "ui/RecordingBar.h"
+#include "ui/Icons.h"
 
 #include <QPainter>
 #include <QTimer>
@@ -89,11 +90,13 @@ RecordingBar::RecordingBar(QWidget* parent) : QWidget(parent) {
     lay->setContentsMargins(14, 10, 14, 10);
     lay->setSpacing(12);
 
-    auto* cancel = new QPushButton(QStringLiteral("🗑"), this);
+    auto* cancel = new QPushButton(this);
     cancel->setCursor(Qt::PointingHandCursor);
     cancel->setFixedSize(40, 40);
+    cancel->setIcon(Icons::icon(Icons::Trash, 18, QColor(0xE2, 0x6A, 0x63)));
+    cancel->setIconSize(QSize(18, 18));
     cancel->setStyleSheet(QStringLiteral(
-        "QPushButton{border:none;border-radius:20px;background:#1A1822;color:#E26A63;font-size:16px;}"
+        "QPushButton{border:none;border-radius:20px;background:#1A1822;}"
         "QPushButton:hover{background:#2B1F22;}"));
 
     dot_ = new PulseDot(this);
@@ -104,11 +107,13 @@ RecordingBar::RecordingBar(QWidget* parent) : QWidget(parent) {
 
     wave_ = new LiveWave(this);
 
-    auto* send = new QPushButton(QStringLiteral("➤"), this);
+    auto* send = new QPushButton(this);
     send->setCursor(Qt::PointingHandCursor);
     send->setFixedSize(44, 44);
+    send->setIcon(Icons::icon(Icons::Send, 20, QColor(0xFF, 0xFF, 0xFF)));
+    send->setIconSize(QSize(20, 20));
     send->setStyleSheet(QStringLiteral(
-        "QPushButton{border:none;border-radius:22px;color:#fff;font-size:18px;font-weight:700;"
+        "QPushButton{border:none;border-radius:22px;"
         "background:qlineargradient(x1:0,y1:0,x2:1,y2:1,stop:0 #8B5CF6,stop:1 #6D28D9);}"
         "QPushButton:hover{background:#9B72F8;}"));
 

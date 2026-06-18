@@ -864,12 +864,15 @@ void ChatPage::onEmojiClicked() {
 // ── Вложения (скрепка) ───────────────────────────────────────────────────────
 
 void ChatPage::onAttachClicked() {
+    const QColor mclr(0xAC, 0xA6, 0xBD);
     QMenu menu(this);
-    QAction* fileAct = menu.addAction(QStringLiteral("📄  Файл"));
-    QAction* checklist = menu.addAction(QStringLiteral("✅  Чек-лист (скоро)"));
+    QAction* fileAct = menu.addAction(Icons::icon(Icons::File, 18, mclr), QStringLiteral("Файл"));
+    QAction* checklist = menu.addAction(Icons::icon(Icons::Checklist, 18, mclr),
+                                        QStringLiteral("Чек-лист (скоро)"));
     checklist->setEnabled(false);
     menu.addSeparator();
-    QMenu* geo = menu.addMenu(QStringLiteral("📍  Геопозиция"));
+    QMenu* geo = menu.addMenu(QStringLiteral("Геопозиция"));
+    geo->setIcon(Icons::icon(Icons::Location, 18, mclr));
     QAction* geoSend = geo->addAction(QStringLiteral("Отправить (скоро)"));
     QAction* geoLive = geo->addAction(QStringLiteral("Транслировать (Live, скоро)"));
     geoSend->setEnabled(false);
