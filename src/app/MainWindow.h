@@ -10,6 +10,7 @@ class LoginPage;
 class RegisterPage;
 class ChatPage;
 class QTimer;
+class QSystemTrayIcon;
 
 // Главное окно: переключает экраны вход / регистрация / домашний.
 class MainWindow : public QMainWindow {
@@ -33,4 +34,5 @@ private:
     ChatPage*       chat_    = nullptr;
     CallController* callCtl_ = nullptr;
     QTimer*         callPoll_ = nullptr;
+    QSystemTrayIcon* tray_   = nullptr;
 };

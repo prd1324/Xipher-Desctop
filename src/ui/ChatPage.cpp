@@ -1160,6 +1160,13 @@ void ChatPage::addBubble(const ChatMessage& msg) {
         showMessageMenu(bubble, bubble->mapToGlobal(p));
     });
 
+    // Имя отправителя в группах (входящие, как в Telegram).
+    if (!msg.sent && currentKind_ == ChatKind::Group && !msg.senderName.isEmpty()) {
+        auto* author = new QLabel(msg.senderName, bubble);
+        author->setStyleSheet(QStringLiteral("color:#8B5CF6;font-size:12px;font-weight:700;"));
+        bl->addWidget(author);
+    }
+
     // Reply-превью (если есть)
     if (!msg.replySnippet.isEmpty()) {
         auto* reply = new QLabel(
@@ -1508,6 +1515,14 @@ void ChatPage::onWsMessage(const QString& peerId, const ChatMessage& msgIn, cons
 
     bumpChat(peerId, msg.content, msg.time,
              /*incrementUnread*/ (!msg.sent && peerId != currentPeerId_));
+
+    // Системное уведомление о входящем (не своём) сообщении.
+    if (!msg.sent && !msg.content.startsWith(QStringLiteral("[["))
+        && !msg.content.startsWith(ChecklistProto::kUpdatePrefix)) {
+        const int idx = indexOfChat(peerId);
+        const QString who = idx >= 0 ? chats_[idx].displayName : QStringLiteral("Сообщение");
+        emit notify(who, chatPreview(msg.content));
+    }
 }
 
 void ChatPage::bumpChat(const QString& peerId, const QString& lastText,

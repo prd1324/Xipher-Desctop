@@ -13,6 +13,9 @@
 #include <QVBoxLayout>
 #include <QLabel>
 #include <QTimer>
+#include <QSystemTrayIcon>
+#include <QStyle>
+#include "net/Prefs.h"
 
 #ifdef _WIN32
 #include <windows.h>
@@ -71,6 +74,18 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     // Успешный вход → мессенджер.
     connect(login_, &LoginPage::loginSucceeded, this, [this]() {
         enterChat();
+    });
+
+    // Системные уведомления (трей) о входящих сообщениях.
+    tray_ = new QSystemTrayIcon(this);
+    tray_->setIcon(windowIcon().isNull() ? style()->standardIcon(QStyle::SP_MessageBoxInformation)
+                                         : windowIcon());
+    tray_->setToolTip(QStringLiteral("Xipher"));
+    tray_->show();
+    connect(chat_, &ChatPage::notify, this, [this](const QString& title, const QString& body) {
+        if (!Prefs::getBool(QStringLiteral("xipher_notif_desktop"), true)) return;
+        if (isActiveWindow()) return;   // окно в фокусе — не отвлекаем
+        tray_->showMessage(title, body, QSystemTrayIcon::NoIcon, 5000);
     });
 
     // Звонки: оркестратор + поллинг входящих.

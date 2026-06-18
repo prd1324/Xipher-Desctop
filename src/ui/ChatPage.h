@@ -46,6 +46,7 @@ public:
 signals:
     void logoutRequested();
     void callRequested(const QString& peerId, const QString& peerName, const QString& avatarUrl);
+    void notify(const QString& title, const QString& body);   // системное уведомление
 
 public:
     void openChatWith(const QString& userId, const QString& displayName, const QString& username);
