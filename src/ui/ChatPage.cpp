@@ -130,6 +130,27 @@ bool isGeoContent(const QString& c) {
            c.contains(QStringLiteral("maps?pt=")) || c.contains(QStringLiteral("maps?ll="));
 }
 
+// Превью последнего сообщения для списка чатов: служебные маркеры протокола
+// (звонки, чек-листы, гео) → человекочитаемый текст, а не сырой [[...]].
+QString chatPreview(const QString& content) {
+    if (content.startsWith(kCallEventPrefix)) {
+        const QString raw = content.mid(kCallEventPrefix.length()).trimmed();
+        const QString status = QJsonDocument::fromJson(raw.toUtf8()).object()
+                                   .value(QStringLiteral("status")).toString();
+        if (status == QStringLiteral("rejected") || status == QStringLiteral("declined"))
+            return QStringLiteral("Звонок отклонён");
+        if (status == QStringLiteral("cancelled"))
+            return QStringLiteral("Звонок отменён");
+        return QStringLiteral("Пропущенный звонок");
+    }
+    if (content.startsWith(ChecklistProto::kPrefix) ||
+        content.startsWith(ChecklistProto::kUpdatePrefix))
+        return QStringLiteral("Чек-лист");
+    if (content.startsWith(QStringLiteral("geo:")))
+        return QStringLiteral("Геопозиция");
+    return content;
+}
+
 // Человекочитаемый размер файла.
 QString humanSize(long long bytes) {
     if (bytes <= 0) return QString();
@@ -668,7 +689,7 @@ void ChatPage::rebuildChatList() {
                                   : (c.avatarText.isEmpty() ? c.displayName : c.avatarText);
         const QString time = c.time == QStringLiteral("Нет сообщений") ? QString() : c.time;
         auto* row = buildContactRow(c.isSaved ? QString() : c.avatarUrl,
-                                    avatarText, c.displayName, c.lastMessage, time, c.unread);
+                                    avatarText, c.displayName, chatPreview(c.lastMessage), time, c.unread);
 
         auto* item = new QListWidgetItem(chatList_);
         item->setSizeHint(QSize(0, 64));
