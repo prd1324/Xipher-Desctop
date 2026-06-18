@@ -32,6 +32,7 @@ set(SOURCES
     src/ui/VoiceMessageWidget.cpp
     src/ui/RecordingBar.cpp
     src/ui/EmojiPicker.cpp
+    src/ui/AvatarUtil.cpp
 )
 
 set(HEADERS
@@ -51,6 +52,8 @@ set(HEADERS
     src/ui/VoiceMessageWidget.h
     src/ui/RecordingBar.h
     src/ui/EmojiPicker.h
+    src/ui/AvatarUtil.h
+    src/ui/Icons.h
 )
 
 qt_add_executable(Xipher

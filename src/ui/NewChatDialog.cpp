@@ -1,4 +1,5 @@
 #include "ui/NewChatDialog.h"
+#include "ui/AvatarUtil.h"
 #include "net/ApiClient.h"
 
 #include <QVBoxLayout>
@@ -134,7 +135,9 @@ void NewChatDialog::onUsersFound(const QString& query, const QList<UserHit>& use
         auto* rl = new QHBoxLayout(row);
         rl->setContentsMargins(10, 8, 10, 8);
         rl->setSpacing(10);
-        rl->addWidget(avatar(u.displayName.isEmpty() ? u.username : u.displayName, 40));
+        auto* av = new QLabel();
+        Avatar::setRound(av, u.avatarUrl, u.displayName.isEmpty() ? u.username : u.displayName, 40);
+        rl->addWidget(av);
 
         auto* col = new QVBoxLayout();
         col->setSpacing(1);

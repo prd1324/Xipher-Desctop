@@ -3,6 +3,7 @@
 #include <QList>
 #include <QSet>
 #include <QHash>
+#include <QPointer>
 
 #include "net/Models.h"
 
@@ -123,6 +124,10 @@ private:
     QString             activeVoicePath_;
 
     QList<Chat> chats_;
+    QList<UserHit> searchHits_;   // глобальный поиск людей в сайдбаре
+    QString     searchQuery_;
+    QTimer*     searchTimer_ = nullptr;
+    QHash<QString, QPointer<QLabel>> pendingImage_;   // путь → QLabel для картинки
     QString     currentPeerId_;
     QString     currentPeerName_;
     QSet<QString> shownIds_;   // дедуп сообщений в открытом чате

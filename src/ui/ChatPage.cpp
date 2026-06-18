@@ -3,6 +3,8 @@
 #include "ui/VoiceMessageWidget.h"
 #include "ui/RecordingBar.h"
 #include "ui/EmojiPicker.h"
+#include "ui/Icons.h"
+#include "ui/AvatarUtil.h"
 #include "net/ApiClient.h"
 #include "net/WsClient.h"
 #include "net/Session.h"
@@ -14,6 +16,9 @@
 #include <QStandardPaths>
 #include <QDesktopServices>
 #include <QToolTip>
+#include <QDate>
+#include <QLocale>
+#include <QPixmap>
 
 #include <QHBoxLayout>
 #include <QVBoxLayout>
@@ -58,6 +63,34 @@ QString humanSize(long long bytes) {
     return QStringLiteral("%1 %2").arg(v, 0, 'f', (i == 0 ? 0 : 1)).arg(QString::fromUtf8(u[i]));
 }
 
+// Метка дня для разделителя (Сегодня / Вчера / 13 июня).
+QString dateLabel(const QString& createdAt) {
+    const QDate d = QDate::fromString(createdAt.left(10), QStringLiteral("yyyy-MM-dd"));
+    if (!d.isValid()) return QString();
+    const QDate today = QDate::currentDate();
+    if (d == today) return QStringLiteral("Сегодня");
+    if (d == today.addDays(-1)) return QStringLiteral("Вчера");
+    const QLocale ru(QLocale::Russian);
+    return ru.toString(d, d.year() == today.year() ? QStringLiteral("d MMMM")
+                                                    : QStringLiteral("d MMMM yyyy"));
+}
+
+// Центрированная «пилюля»-разделитель дат.
+QWidget* makeDateSeparator(const QString& label) {
+    auto* row = new QWidget();
+    row->setStyleSheet(QStringLiteral("background:transparent;"));
+    auto* l = new QHBoxLayout(row);
+    l->setContentsMargins(0, 10, 0, 6);
+    l->addStretch();
+    auto* pill = new QLabel(label);
+    pill->setStyleSheet(QStringLiteral(
+        "background:rgba(255,255,255,0.07);color:#ACA6BD;font-size:12px;font-weight:600;"
+        "padding:4px 12px;border-radius:11px;"));
+    l->addWidget(pill);
+    l->addStretch();
+    return row;
+}
+
 // Достаёт секунды из подписи вида "🎤 m:ss" (0 — если нет).
 int parseVoiceSeconds(const QString& content) {
     QRegularExpression re(QStringLiteral("(\\d+):(\\d{2})"));
@@ -66,18 +99,10 @@ int parseVoiceSeconds(const QString& content) {
     return m.captured(1).toInt() * 60 + m.captured(2).toInt();
 }
 
-// Круглый аватар: буква на матовом фиолетовом градиенте.
-QLabel* makeAvatar(const QString& text, int size) {
+// Круглый аватар: картинка по url (если есть) либо буква на градиенте.
+QLabel* makeAvatar(const QString& url, const QString& text, int size) {
     auto* a = new QLabel();
-    a->setFixedSize(size, size);
-    a->setAlignment(Qt::AlignCenter);
-    QString letter = text.trimmed().left(1).toUpper();
-    if (letter.isEmpty()) letter = QStringLiteral("?");
-    a->setText(letter);
-    a->setStyleSheet(QString(
-        "border-radius:%1px;color:#fff;font-weight:700;font-size:%2px;"
-        "background:qlineargradient(x1:0,y1:0,x2:1,y2:1,stop:0 #8B5CF6,stop:1 #6D28D9);")
-        .arg(size / 2).arg(size * 4 / 10));
+    Avatar::setRound(a, url, text, size);
     return a;
 }
 
@@ -89,8 +114,21 @@ ChatPage::ChatPage(ApiClient* api, WsClient* ws, QWidget* parent)
     player_   = new QMediaPlayer(this);
     audioOut_ = new QAudioOutput(this);
     player_->setAudioOutput(audioOut_);
+    searchTimer_ = new QTimer(this);
+    searchTimer_->setSingleShot(true);
+    searchTimer_->setInterval(350);
 
     buildUi();
+
+    connect(searchTimer_, &QTimer::timeout, this, [this]() {
+        if (!searchQuery_.isEmpty()) api_->searchUsers(searchQuery_);
+    });
+    connect(api_, &ApiClient::usersFound, this,
+            [this](const QString& query, const QList<UserHit>& users) {
+        if (query != searchQuery_) return;   // устаревший/чужой ответ
+        searchHits_ = users;
+        rebuildChatList();
+    });
 
     connect(api_, &ApiClient::chatsLoaded,    this, &ChatPage::onChatsLoaded);
     connect(api_, &ApiClient::messagesLoaded,  this, &ChatPage::onMessagesLoaded);
@@ -210,9 +248,11 @@ QMenu::separator { height:1px; background:rgba(255,255,255,0.08); margin:4px 8px
     shl->setContentsMargins(16, 0, 12, 0);
     auto* brand = new QLabel(QStringLiteral("Xipher"), sideHeader);
     brand->setObjectName(QStringLiteral("brandTitle"));
-    auto* newChatBtn = new QPushButton(QStringLiteral("✏  Новый"), sideHeader);
+    auto* newChatBtn = new QPushButton(QStringLiteral(" Новый"), sideHeader);
     newChatBtn->setObjectName(QStringLiteral("iconBtn"));
     newChatBtn->setCursor(Qt::PointingHandCursor);
+    newChatBtn->setIcon(Icons::icon(Icons::Pencil, 15, QColor(0xAC, 0xA6, 0xBD)));
+    newChatBtn->setIconSize(QSize(15, 15));
     auto* logoutBtn = new QPushButton(QStringLiteral("Выйти"), sideHeader);
     logoutBtn->setObjectName(QStringLiteral("iconBtn"));
     logoutBtn->setCursor(Qt::PointingHandCursor);
@@ -263,7 +303,7 @@ QMenu::separator { height:1px; background:rgba(255,255,255,0.08); margin:4px 8px
     auto* chl = new QHBoxLayout(convHeader);
     chl->setContentsMargins(16, 0, 16, 0);
     chl->setSpacing(12);
-    peerAvatar_ = makeAvatar(QStringLiteral("?"), 40);
+    peerAvatar_ = makeAvatar(QString(), QStringLiteral("?"), 40);
     peerAvatar_->setParent(convHeader);
     auto* names = new QVBoxLayout();
     names->setSpacing(0);
@@ -302,31 +342,42 @@ QMenu::separator { height:1px; background:rgba(255,255,255,0.08); margin:4px 8px
     cbl->setContentsMargins(12, 10, 12, 10);
     cbl->setSpacing(6);
 
-    timerBtn_ = new QPushButton(QStringLiteral("⏱"), normal);
+    const QColor iconClr(0xAC, 0xA6, 0xBD);
+    timerBtn_ = new QPushButton(normal);
     timerBtn_->setObjectName(QStringLiteral("composerIcon"));
     timerBtn_->setCursor(Qt::PointingHandCursor);
     timerBtn_->setToolTip(QStringLiteral("Исчезающие сообщения"));
+    timerBtn_->setIcon(Icons::icon(Icons::Clock, 20, iconClr));
+    timerBtn_->setIconSize(QSize(20, 20));
 
-    attachBtn_ = new QPushButton(QStringLiteral("📎"), normal);
+    attachBtn_ = new QPushButton(normal);
     attachBtn_->setObjectName(QStringLiteral("composerIcon"));
     attachBtn_->setCursor(Qt::PointingHandCursor);
     attachBtn_->setToolTip(QStringLiteral("Прикрепить"));
+    attachBtn_->setIcon(Icons::icon(Icons::Paperclip, 20, iconClr));
+    attachBtn_->setIconSize(QSize(20, 20));
 
     composer_ = new QLineEdit(normal);
     composer_->setObjectName(QStringLiteral("composer"));
     composer_->setPlaceholderText(QStringLiteral("Сообщение…"));
 
-    emojiBtn_ = new QPushButton(QStringLiteral("😀"), normal);
+    emojiBtn_ = new QPushButton(normal);
     emojiBtn_->setObjectName(QStringLiteral("composerIcon"));
     emojiBtn_->setCursor(Qt::PointingHandCursor);
     emojiBtn_->setToolTip(QStringLiteral("Эмодзи"));
+    emojiBtn_->setIcon(Icons::icon(Icons::Smile, 20, iconClr));
+    emojiBtn_->setIconSize(QSize(20, 20));
 
-    micBtn_ = new QPushButton(QStringLiteral("🎤"), normal);
+    micBtn_ = new QPushButton(normal);
     micBtn_->setObjectName(QStringLiteral("micBtn"));
     micBtn_->setCursor(Qt::PointingHandCursor);
-    sendBtn_ = new QPushButton(QStringLiteral("➤"), normal);
+    micBtn_->setIcon(Icons::icon(Icons::Mic, 20, iconClr));
+    micBtn_->setIconSize(QSize(20, 20));
+    sendBtn_ = new QPushButton(normal);
     sendBtn_->setObjectName(QStringLiteral("sendBtn"));
     sendBtn_->setCursor(Qt::PointingHandCursor);
+    sendBtn_->setIcon(Icons::icon(Icons::Send, 20, QColor(0xFF, 0xFF, 0xFF)));
+    sendBtn_->setIconSize(QSize(20, 20));
 
     cbl->addWidget(timerBtn_);
     cbl->addWidget(attachBtn_);
@@ -385,68 +436,112 @@ void ChatPage::onChatsLoaded(const QList<Chat>& chats) {
     rebuildChatList();
 }
 
+// Строка контакта (аватар + имя + подзаголовок + опц. время/бейдж).
+static QWidget* buildContactRow(const QString& url, const QString& avatarText,
+                                const QString& title, const QString& subtitle,
+                                const QString& time, int unread) {
+    auto* row = new QWidget();
+    row->setStyleSheet(QStringLiteral("background:transparent;"));
+    auto* rl = new QHBoxLayout(row);
+    rl->setContentsMargins(12, 8, 12, 8);
+    rl->setSpacing(10);
+
+    auto* av = new QLabel();
+    Avatar::setRound(av, url, avatarText, 48);
+    rl->addWidget(av);
+
+    auto* mid = new QVBoxLayout();
+    mid->setSpacing(2);
+    auto* topRow = new QHBoxLayout();
+    topRow->setSpacing(6);
+    auto* name = new QLabel(row);
+    name->setStyleSheet(QStringLiteral("color:#F3F1F8;font-size:14px;font-weight:600;"));
+    name->setText(elide(title, name->font(), 200));
+    topRow->addWidget(name);
+    topRow->addStretch();
+    if (!time.isEmpty()) {
+        auto* t = new QLabel(time, row);
+        t->setStyleSheet(QStringLiteral("color:#726C82;font-size:11px;"));
+        topRow->addWidget(t);
+    }
+
+    auto* botRow = new QHBoxLayout();
+    botRow->setSpacing(6);
+    auto* last = new QLabel(row);
+    last->setStyleSheet(QStringLiteral("color:#ACA6BD;font-size:13px;"));
+    last->setText(elide(subtitle, last->font(), 210));
+    botRow->addWidget(last);
+    botRow->addStretch();
+    if (unread > 0) {
+        auto* badge = new QLabel(QString::number(unread), row);
+        badge->setAlignment(Qt::AlignCenter);
+        badge->setStyleSheet(QStringLiteral(
+            "background:#8B5CF6;color:#fff;font-size:11px;font-weight:700;"
+            "border-radius:9px;min-width:18px;min-height:18px;padding:0 5px;"));
+        botRow->addWidget(badge);
+    }
+    mid->addLayout(topRow);
+    mid->addLayout(botRow);
+    rl->addLayout(mid, 1);
+    return row;
+}
+
 void ChatPage::rebuildChatList() {
     const QString filter = search_->text().trimmed().toLower();
     chatList_->blockSignals(true);
     chatList_->clear();
 
+    QSet<QString> shownChatIds;
     for (const Chat& c : chats_) {
         if (!filter.isEmpty() &&
             !c.displayName.toLower().contains(filter) &&
             !c.name.toLower().contains(filter))
             continue;
+        shownChatIds.insert(c.id);
 
-        auto* row = new QWidget();
-        row->setStyleSheet(QStringLiteral("background:transparent;"));
-        auto* rl = new QHBoxLayout(row);
-        rl->setContentsMargins(12, 8, 12, 8);
-        rl->setSpacing(10);
-
-        QString avatarText = c.isSaved ? QStringLiteral("★")
-                                       : (c.avatarText.isEmpty() ? c.displayName : c.avatarText);
-        rl->addWidget(makeAvatar(avatarText, 48));
-
-        auto* mid = new QVBoxLayout();
-        mid->setSpacing(2);
-        auto* topRow = new QHBoxLayout();
-        topRow->setSpacing(6);
-        auto* name = new QLabel(row);
-        name->setStyleSheet(QStringLiteral("color:#F3F1F8;font-size:14px;font-weight:600;"));
-        name->setText(elide(c.displayName, name->font(), 200));
-        auto* time = new QLabel(c.time == QStringLiteral("Нет сообщений") ? QString() : c.time, row);
-        time->setStyleSheet(QStringLiteral("color:#726C82;font-size:11px;"));
-        topRow->addWidget(name);
-        topRow->addStretch();
-        topRow->addWidget(time);
-
-        auto* botRow = new QHBoxLayout();
-        botRow->setSpacing(6);
-        auto* last = new QLabel(row);
-        last->setStyleSheet(QStringLiteral("color:#ACA6BD;font-size:13px;"));
-        last->setText(elide(c.lastMessage, last->font(), 210));
-        botRow->addWidget(last);
-        botRow->addStretch();
-        if (c.unread > 0) {
-            auto* badge = new QLabel(QString::number(c.unread), row);
-            badge->setAlignment(Qt::AlignCenter);
-            badge->setStyleSheet(QStringLiteral(
-                "background:#8B5CF6;color:#fff;font-size:11px;font-weight:700;"
-                "border-radius:9px;min-width:18px;min-height:18px;padding:0 5px;"));
-            botRow->addWidget(badge);
-        }
-
-        mid->addLayout(topRow);
-        mid->addLayout(botRow);
-        rl->addLayout(mid, 1);
+        const QString avatarText = c.isSaved ? QStringLiteral("★")
+                                  : (c.avatarText.isEmpty() ? c.displayName : c.avatarText);
+        const QString time = c.time == QStringLiteral("Нет сообщений") ? QString() : c.time;
+        auto* row = buildContactRow(c.isSaved ? QString() : c.avatarUrl,
+                                    avatarText, c.displayName, c.lastMessage, time, c.unread);
 
         auto* item = new QListWidgetItem(chatList_);
         item->setSizeHint(QSize(0, 64));
         item->setData(Qt::UserRole, c.id);
+        item->setData(Qt::UserRole + 1, false);   // не результат поиска
         chatList_->addItem(item);
         chatList_->setItemWidget(item, row);
+        if (c.id == currentPeerId_) item->setSelected(true);
+    }
 
-        if (c.id == currentPeerId_)
-            item->setSelected(true);
+    // Глобальный поиск людей (как в Telegram): показываем найденных, кого ещё нет в чатах.
+    if (!filter.isEmpty() && !searchHits_.isEmpty()) {
+        bool headerAdded = false;
+        for (const UserHit& u : searchHits_) {
+            if (shownChatIds.contains(u.id)) continue;
+            if (!headerAdded) {
+                auto* h = new QListWidgetItem(chatList_);
+                h->setFlags(Qt::NoItemFlags);
+                h->setSizeHint(QSize(0, 28));
+                auto* hl = new QLabel(QStringLiteral("  Люди"));
+                hl->setStyleSheet(QStringLiteral("color:#726C82;font-size:11px;font-weight:700;"
+                                                 "text-transform:uppercase;padding:6px 4px;"));
+                chatList_->addItem(h);
+                chatList_->setItemWidget(h, hl);
+                headerAdded = true;
+            }
+            auto* row = buildContactRow(u.avatarUrl, u.displayName.isEmpty() ? u.username : u.displayName,
+                                        u.displayName.isEmpty() ? u.username : u.displayName,
+                                        QStringLiteral("@") + u.username, QString(), 0);
+            auto* item = new QListWidgetItem(chatList_);
+            item->setSizeHint(QSize(0, 64));
+            item->setData(Qt::UserRole, u.id);
+            item->setData(Qt::UserRole + 1, true);   // результат поиска
+            item->setData(Qt::UserRole + 2, u.displayName.isEmpty() ? u.username : u.displayName);
+            item->setData(Qt::UserRole + 3, u.username);
+            chatList_->addItem(item);
+            chatList_->setItemWidget(item, row);
+        }
     }
     chatList_->blockSignals(false);
 }
@@ -455,6 +550,11 @@ void ChatPage::onChatClicked() {
     auto* item = chatList_->currentItem();
     if (!item) return;
     const QString id = item->data(Qt::UserRole).toString();
+    if (item->data(Qt::UserRole + 1).toBool()) {   // найденный человек → открыть новый чат
+        openChatWith(id, item->data(Qt::UserRole + 2).toString(),
+                     item->data(Qt::UserRole + 3).toString());
+        return;
+    }
     const int idx = indexOfChat(id);
     if (idx < 0) return;
     openChat(chats_[idx]);
@@ -464,6 +564,8 @@ void ChatPage::openChat(const Chat& chat) {
     currentPeerId_   = chat.id;
     currentPeerName_ = chat.displayName;
     peerName_->setText(chat.displayName);
+    Avatar::setRound(peerAvatar_, chat.isSaved ? QString() : chat.avatarUrl,
+                     chat.isSaved ? QStringLiteral("★") : chat.displayName, 40);
     peerStatus_->setText(chat.isSaved ? QStringLiteral("Заметки для себя")
                                       : (chat.online ? QStringLiteral("в сети")
                                                      : QStringLiteral("не в сети")));
@@ -502,7 +604,14 @@ void ChatPage::onMessagesLoaded(const QString& friendId, const QList<ChatMessage
     QList<ChatMessage> ordered = messages;
     std::sort(ordered.begin(), ordered.end(),
               [](const ChatMessage& a, const ChatMessage& b) { return a.createdAt < b.createdAt; });
+    QString lastDay;
     for (const ChatMessage& m : ordered) {
+        const QString day = m.createdAt.left(10);
+        if (!day.isEmpty() && day != lastDay) {
+            const QString lbl = dateLabel(m.createdAt);
+            if (!lbl.isEmpty()) msgLayout_->addWidget(makeDateSeparator(lbl));
+            lastDay = day;
+        }
         if (!m.id.isEmpty()) shownIds_.insert(m.id);
         addBubble(m);
     }
@@ -554,13 +663,38 @@ void ChatPage::addBubble(const ChatMessage& msg) {
             if (activeVoice_ == voice && player_->duration() > 0)
                 player_->setPosition(qint64(frac * player_->duration()));
         });
+    } else if (msg.messageType == QStringLiteral("image") || msg.messageType == QStringLiteral("photo")) {
+        // Фото: показываем картинку (локально или тянем с /files).
+        auto* img = new QLabel(bubble);
+        img->setAlignment(Qt::AlignCenter);
+        img->setMinimumSize(180, 120);
+        img->setStyleSheet(QStringLiteral("background:rgba(255,255,255,0.05);border-radius:10px;color:#ACA6BD;"));
+        img->setText(QStringLiteral("Фото…"));
+        bubble->setMinimumWidth(220);
+        bl->addWidget(img);
+        const QString path = msg.filePath;
+        if (!path.isEmpty()) {
+            if (!path.startsWith(QStringLiteral("/files"))) {
+                QPixmap pm(path);
+                if (!pm.isNull()) {
+                    img->setPixmap(pm.scaled(280, 360, Qt::KeepAspectRatio, Qt::SmoothTransformation));
+                    img->setText(QString());
+                }
+            } else {
+                pendingImage_.insert(path, img);
+                api_->fetchFile(path);
+            }
+        }
     } else if (msg.messageType == QStringLiteral("file")) {
         // Файл: 📎 имя + размер, клик — скачать и открыть.
         auto* fbtn = new QPushButton(bubble);
         fbtn->setCursor(Qt::PointingHandCursor);
         fbtn->setFlat(true);
         const QString nm = msg.fileName.isEmpty() ? QStringLiteral("файл") : msg.fileName;
-        fbtn->setText(QStringLiteral("📎  %1   %2").arg(nm, humanSize(msg.fileSize)));
+        const QColor fclr = msg.sent ? QColor(0xF0, 0xEC, 0xFA) : QColor(0xF3, 0xF1, 0xF8);
+        fbtn->setIcon(Icons::icon(Icons::File, 18, fclr));
+        fbtn->setIconSize(QSize(18, 18));
+        fbtn->setText(QStringLiteral("  %1   %2").arg(nm, humanSize(msg.fileSize)));
         fbtn->setStyleSheet(QString(
             "QPushButton{border:none;background:transparent;text-align:left;font-size:14px;color:%1;}"
             "QPushButton:hover{text-decoration:underline;}")
@@ -672,8 +806,16 @@ void ChatPage::bumpChat(const QString& peerId, const QString& lastText,
     rebuildChatList();
 }
 
-void ChatPage::onSearchChanged(const QString&) {
-    rebuildChatList();
+void ChatPage::onSearchChanged(const QString& text) {
+    rebuildChatList();   // мгновенно фильтруем существующие чаты
+    const QString q = text.trimmed();
+    if (q.length() >= 2) {
+        searchQuery_ = q;
+        searchTimer_->start();   // дебаунс глобального поиска людей
+    } else {
+        searchQuery_.clear();
+        if (!searchHits_.isEmpty()) { searchHits_.clear(); rebuildChatList(); }
+    }
 }
 
 void ChatPage::openNewChatDialog() {
@@ -734,7 +876,9 @@ void ChatPage::onAttachClicked() {
     geoLive->setEnabled(false);
 
     connect(fileAct, &QAction::triggered, this, &ChatPage::pickAndSendFile);
-    menu.exec(attachBtn_->mapToGlobal(QPoint(0, attachBtn_->height() + 4)));
+    QPoint pos = attachBtn_->mapToGlobal(QPoint(0, 0));
+    pos.setY(pos.y() - menu.sizeHint().height() - 6);   // открываем ВВЕРХ
+    menu.exec(pos);
 }
 
 // ── Таймер исчезающих (пока UI-состояние) ────────────────────────────────────
@@ -757,7 +901,9 @@ void ChatPage::onTimerClicked() {
                 ? QStringLiteral("#composerIcon{color:#8B5CF6;}") : QString());
         });
     }
-    menu.exec(timerBtn_->mapToGlobal(QPoint(0, timerBtn_->height() + 4)));
+    QPoint pos = timerBtn_->mapToGlobal(QPoint(0, 0));
+    pos.setY(pos.y() - menu.sizeHint().height() - 6);   // открываем ВВЕРХ
+    menu.exec(pos);
 }
 
 // ── Файлы ────────────────────────────────────────────────────────────────────
@@ -904,6 +1050,18 @@ void ChatPage::playVoice(const QString& path) {
 }
 
 void ChatPage::onFileFetched(const QString& filePath, const QByteArray& bytes) {
+    // Картинка для сообщения-фото.
+    if (pendingImage_.contains(filePath)) {
+        QPointer<QLabel> lbl = pendingImage_.take(filePath);
+        QPixmap pm;
+        if (lbl && pm.loadFromData(bytes)) {
+            lbl->setPixmap(pm.scaled(280, 360, Qt::KeepAspectRatio, Qt::SmoothTransformation));
+            lbl->setText(QString());
+            lbl->setMinimumSize(0, 0);
+        }
+        return;
+    }
+
     // Скачивание обычного файла → сохраняем в «Загрузки» и открываем.
     if (pendingFileOpen_.contains(filePath)) {
         const QString name = pendingFileOpen_.take(filePath);
