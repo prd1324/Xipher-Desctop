@@ -11,6 +11,8 @@
 #include <QFrame>
 #include <QTimer>
 #include <QEvent>
+#include <QMenu>
+#include <QContextMenuEvent>
 
 ContactsPanel::ContactsPanel(ApiClient* api, QWidget* parent)
     : ModalOverlay(parent, 460), api_(api) {
@@ -118,6 +120,9 @@ QScrollBar::add-line:vertical,QScrollBar::sub-line:vertical{height:0;}
     connect(api_, &ApiClient::friendActionDone, this, [this](const QString&, bool, bool ok) {
         if (ok) { api_->getFriendRequests(); api_->getFriends(); emit friendsChanged(); }
     });
+    connect(api_, &ApiClient::contactActionDone, this, [this](bool ok) {
+        if (ok) { api_->getFriends(); emit friendsChanged(); }
+    });
 
     api_->getFriends();
     api_->getFriendRequests();
@@ -132,6 +137,23 @@ bool ContactsPanel::eventFilter(QObject* obj, QEvent* e) {
                 emit openChatRequested(id, w->property("openName").toString(),
                                        w->property("openUser").toString());
                 closeAnimated();
+                return true;
+            }
+        }
+    }
+    if (e->type() == QEvent::ContextMenu) {
+        if (auto* w = qobject_cast<QWidget*>(obj)) {
+            const QString id = w->property("openId").toString();
+            if (!id.isEmpty()) {
+                QMenu menu(this);
+                QAction* write = menu.addAction(QStringLiteral("Написать"));
+                QAction* rm = menu.addAction(QStringLiteral("Удалить из контактов"));
+                QAction* block = menu.addAction(QStringLiteral("Заблокировать"));
+                QAction* ch = menu.exec(static_cast<QContextMenuEvent*>(e)->globalPos());
+                if (ch == write) { emit openChatRequested(id, w->property("openName").toString(),
+                                                          w->property("openUser").toString()); closeAnimated(); }
+                else if (ch == rm)    { api_->removeFriend(id); }
+                else if (ch == block) { api_->blockUser(id); }
                 return true;
             }
         }

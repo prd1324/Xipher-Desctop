@@ -241,6 +241,10 @@ ChatPage::ChatPage(ApiClient* api, WsClient* ws, QWidget* parent)
 
     connect(api_, &ApiClient::chatsLoaded,    this, &ChatPage::onChatsLoaded);
     connect(api_, &ApiClient::messagesLoaded,  this, &ChatPage::onMessagesLoaded);
+    connect(api_, &ApiClient::chatActionDone, this, [this](bool ok){
+        if (ok) { api_->getChats(); api_->getGroups(); api_->getChannels(); } });
+    connect(api_, &ApiClient::peerActionDone, this, [this](bool ok, const QString&){
+        if (ok) { api_->getGroups(); api_->getChannels(); } });
     connect(api_, &ApiClient::groupsLoaded, this, [this](const QList<Chat>& g){ groupChats_ = g; mergeAllChats(); });
     connect(api_, &ApiClient::channelsLoaded, this, [this](const QList<Chat>& c){ channelChats_ = c; mergeAllChats(); });
     connect(api_, &ApiClient::groupMessagesLoaded, this, &ChatPage::onMessagesLoaded);
@@ -676,6 +680,29 @@ QMenu::separator { height:1px; background:rgba(255,255,255,0.08); margin:4px 8px
     connect(newChatBtn, &QPushButton::clicked, this, &ChatPage::openNewChatDialog);
     connect(menuBtn_, &QPushButton::clicked, this, &ChatPage::showMainMenu);
     connect(chatList_, &QListWidget::itemClicked, this, &ChatPage::onChatClicked);
+    chatList_->setContextMenuPolicy(Qt::CustomContextMenu);
+    connect(chatList_, &QListWidget::customContextMenuRequested, this, [this](const QPoint& p) {
+        QListWidgetItem* it = chatList_->itemAt(p);
+        if (!it) return;
+        const QString id = it->data(Qt::UserRole).toString();
+        const int idx = indexOfChat(id);
+        if (idx < 0) return;
+        const Chat c = chats_[idx];
+        QMenu menu(this);
+        QAction* open = menu.addAction(QStringLiteral("Открыть"));
+        QAction* del = nullptr;
+        if (c.kind == ChatKind::Group)        del = menu.addAction(QStringLiteral("Выйти из группы"));
+        else if (c.kind == ChatKind::Channel) del = menu.addAction(QStringLiteral("Отписаться"));
+        else if (!c.isSaved)                  del = menu.addAction(QStringLiteral("Удалить чат"));
+        QAction* ch = menu.exec(chatList_->mapToGlobal(p));
+        if (ch == open) openChat(c);
+        else if (del && ch == del) {
+            if (c.kind == ChatKind::Group)        api_->leaveGroup(c.id);
+            else if (c.kind == ChatKind::Channel) api_->unsubscribeChannel(c.id);
+            else                                  api_->deleteChat(c.id);
+            if (c.id == currentPeerId_) { convStack_->setCurrentIndex(0); currentPeerId_.clear(); }
+        }
+    });
     connect(sendBtn_, &QPushButton::clicked, this, &ChatPage::onSendClicked);
     connect(composer_, &QLineEdit::returnPressed, this, &ChatPage::onSendClicked);
     connect(search_, &QLineEdit::textChanged, this, &ChatPage::onSearchChanged);

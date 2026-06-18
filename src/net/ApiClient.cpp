@@ -838,6 +838,31 @@ void ApiClient::getFriends() {
     });
 }
 
+void ApiClient::removeFriend(const QString& userId) {
+    postJson(QStringLiteral("/api/remove-friend"),
+             {{QStringLiteral("token"), Session::instance().token}, {QStringLiteral("friend_id"), userId}},
+             [this](const QJsonObject& o, bool ok, const QString&) {
+        emit contactActionDone(ok && o.value(QStringLiteral("success")).toBool(false));
+    });
+}
+
+void ApiClient::blockUser(const QString& userId) {
+    postJson(QStringLiteral("/api/block-user"),
+             {{QStringLiteral("token"), Session::instance().token}, {QStringLiteral("user_id"), userId}},
+             [this](const QJsonObject& o, bool ok, const QString&) {
+        emit contactActionDone(ok && o.value(QStringLiteral("success")).toBool(false));
+    });
+}
+
+void ApiClient::deleteChat(const QString& chatId) {
+    postJson(QStringLiteral("/api/delete-chat"),
+             {{QStringLiteral("token"), Session::instance().token},
+              {QStringLiteral("chat_id"), chatId}, {QStringLiteral("chat_type"), QStringLiteral("chat")}},
+             [this](const QJsonObject& o, bool ok, const QString&) {
+        emit chatActionDone(ok && o.value(QStringLiteral("success")).toBool(false));
+    });
+}
+
 void ApiClient::sendFriendRequest(const QString& username) {
     QJsonObject body{{QStringLiteral("token"), Session::instance().token},
                      {QStringLiteral("username"), username}};

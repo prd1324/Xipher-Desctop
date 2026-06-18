@@ -121,6 +121,9 @@ public:
     void setContactName(const QString& contactId, const QString& customName);
     void searchUsers(const QString& query);
     void getFriends();
+    void removeFriend(const QString& userId);
+    void blockUser(const QString& userId);
+    void deleteChat(const QString& chatId);
     void sendFriendRequest(const QString& username);
     void getFriendRequests();
     void acceptFriend(const QString& requestId);
@@ -148,6 +151,8 @@ signals:
 
     void usersFound(const QString& query, const QList<UserHit>& users);
     void friendsLoaded(const QList<UserHit>& friends);
+    void contactActionDone(bool ok);
+    void chatActionDone(bool ok);
     void profileLoaded(const QJsonObject& profile);
 
     // Группы/каналы/каталог.
