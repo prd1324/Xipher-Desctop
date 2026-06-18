@@ -28,6 +28,11 @@ signals:
     void newMessage(const QString& peerId, const ChatMessage& msg, const QString& tempId);
     void connectedChanged(bool connected);
 
+    // Сигналинг звонков (real-time)
+    void callAnswerReceived(const QString& fromUserId, const QString& sdp);
+    void callIceReceived(const QString& fromUserId, const QString& candidate);
+    void callEnded(const QString& fromUserId);
+
 private slots:
     void onConnected();
     void onDisconnected();

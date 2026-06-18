@@ -24,6 +24,8 @@ set(SOURCES
     src/net/WsClient.cpp
     src/net/VoiceRecorder.cpp
     src/net/CallEngine.cpp
+    src/net/CallController.cpp
+    src/ui/CallOverlay.cpp
     src/ui/BackgroundWidget.cpp
     src/ui/LoginPage.cpp
     src/ui/RegisterPage.cpp
@@ -48,6 +50,9 @@ set(HEADERS
     src/net/Models.h
     src/net/WsClient.h
     src/net/VoiceRecorder.h
+    src/net/CallEngine.h
+    src/net/CallController.h
+    src/ui/CallOverlay.h
     src/ui/Theme.h
     src/ui/BackgroundWidget.h
     src/ui/LoginPage.h
@@ -88,8 +93,13 @@ set(LIBDC_DIR "${CMAKE_CURRENT_SOURCE_DIR}/third_party/libdatachannel")
 if(EXISTS "${LIBDC_DIR}/build/libdatachannel.dll.a")
     target_include_directories(Xipher PRIVATE "${LIBDC_DIR}/include")
     target_link_libraries(Xipher PRIVATE "${LIBDC_DIR}/build/libdatachannel.dll.a")
-    target_compile_definitions(Xipher PRIVATE XIPHER_HAVE_WEBRTC=1)
-    message(STATUS "Xipher: WebRTC (libdatachannel) подключён")
+    target_compile_definitions(Xipher PRIVATE XIPHER_HAVE_WEBRTC=1 RTC_ENABLE_MEDIA=1)
+    # Opus для кодирования голоса
+    find_library(OPUS_LIB opus REQUIRED)
+    find_path(OPUS_INC opus/opus.h)
+    target_include_directories(Xipher PRIVATE "${OPUS_INC}" "${OPUS_INC}/opus")
+    target_link_libraries(Xipher PRIVATE "${OPUS_LIB}")
+    message(STATUS "Xipher: WebRTC (libdatachannel) + Opus подключены")
 else()
     message(WARNING "Xipher: libdatachannel не собран — звонки будут отключены")
 endif()

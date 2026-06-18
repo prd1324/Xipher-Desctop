@@ -450,6 +450,86 @@ void ApiClient::fetchFile(const QString& filePath) {
     });
 }
 
+// ── Звонки (сигналинг) ────────────────────────────────────────────────────────
+
+void ApiClient::getTurnConfig() {
+    QJsonObject body{{QStringLiteral("token"), Session::instance().token}};
+    postJson(QStringLiteral("/api/turn-config"), body,
+             [this](const QJsonObject& obj, bool ok, const QString&) {
+        QStringList servers;
+        for (const QJsonValue& v : obj.value(QStringLiteral("ice_servers")).toArray()) {
+            const QJsonValue urls = v.toObject().value(QStringLiteral("urls"));
+            if (urls.isString()) servers << urls.toString();
+            else for (const QJsonValue& u : urls.toArray()) servers << u.toString();
+        }
+        emit turnConfigReady(servers);
+    });
+}
+
+void ApiClient::callNotify(const QString& receiverId, const QString& callType) {
+    postJson(QStringLiteral("/api/call-notification"),
+             {{QStringLiteral("token"), Session::instance().token},
+              {QStringLiteral("receiver_id"), receiverId},
+              {QStringLiteral("call_type"), callType}},
+             [](const QJsonObject&, bool, const QString&) {});
+}
+
+void ApiClient::callOffer(const QString& receiverId, const QString& sdp) {
+    postJson(QStringLiteral("/api/call-offer"),
+             {{QStringLiteral("token"), Session::instance().token},
+              {QStringLiteral("receiver_id"), receiverId},
+              {QStringLiteral("offer"), sdp}},
+             [](const QJsonObject&, bool, const QString&) {});
+}
+
+void ApiClient::callAnswer(const QString& receiverId, const QString& sdp) {
+    postJson(QStringLiteral("/api/call-answer"),
+             {{QStringLiteral("token"), Session::instance().token},
+              {QStringLiteral("receiver_id"), receiverId},
+              {QStringLiteral("answer"), sdp}},
+             [](const QJsonObject&, bool, const QString&) {});
+}
+
+void ApiClient::callIce(const QString& receiverId, const QString& candidate) {
+    postJson(QStringLiteral("/api/call-ice"),
+             {{QStringLiteral("token"), Session::instance().token},
+              {QStringLiteral("receiver_id"), receiverId},
+              {QStringLiteral("candidate"), candidate}},
+             [](const QJsonObject&, bool, const QString&) {});
+}
+
+void ApiClient::callEnd(const QString& receiverId) {
+    postJson(QStringLiteral("/api/call-end"),
+             {{QStringLiteral("token"), Session::instance().token},
+              {QStringLiteral("receiver_id"), receiverId}},
+             [](const QJsonObject&, bool, const QString&) {});
+}
+
+void ApiClient::getCallOffer(const QString& callerId) {
+    postJson(QStringLiteral("/api/get-call-offer"),
+             {{QStringLiteral("token"), Session::instance().token},
+              {QStringLiteral("receiver_id"), callerId}},   // receiver_id здесь = инициатор
+             [this, callerId](const QJsonObject& obj, bool ok, const QString&) {
+        const QJsonObject data = obj.value(QStringLiteral("data")).toObject();
+        QString sdp = data.value(QStringLiteral("offer")).toString();
+        if (sdp.isEmpty()) sdp = obj.value(QStringLiteral("offer")).toString();
+        if (!sdp.isEmpty()) emit callOfferReady(callerId, sdp);
+    });
+}
+
+void ApiClient::checkIncomingCalls() {
+    postJson(QStringLiteral("/api/check-incoming-calls"),
+             {{QStringLiteral("token"), Session::instance().token}},
+             [this](const QJsonObject& obj, bool ok, const QString&) {
+        if (!ok) return;
+        const QJsonObject call = obj.value(QStringLiteral("call")).toObject();
+        const QString callerId = call.value(QStringLiteral("caller_id")).toString();
+        if (callerId.isEmpty()) return;
+        emit incomingCall(callerId, call.value(QStringLiteral("caller_username")).toString(),
+                          call.value(QStringLiteral("call_type")).toString());
+    });
+}
+
 void ApiClient::acceptFriend(const QString& requestId) {
     QJsonObject body{{QStringLiteral("token"), Session::instance().token},
                      {QStringLiteral("request_id"), requestId}};

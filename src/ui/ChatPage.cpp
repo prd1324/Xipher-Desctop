@@ -1383,10 +1383,9 @@ static void showInfoOverlay(QWidget* host, const QString& title, const QString& 
 
 void ChatPage::startCall() {
     if (currentPeerId_.isEmpty()) return;
-    showInfoOverlay(window(), QStringLiteral("Звонки"),
-        QStringLiteral("Голосовые и видеозвонки появятся в одном из ближайших обновлений: "
-                       "они требуют нативной WebRTC-подсистемы (захват аудио/видео, TURN, "
-                       "сигналинг). Бэкенд уже готов — доделываем клиент."));
+    const int idx = indexOfChat(currentPeerId_);
+    const QString avatar = idx >= 0 ? chats_[idx].avatarUrl : QString();
+    emit callRequested(currentPeerId_, currentPeerName_, avatar);
 }
 
 void ChatPage::showChatMenu() {

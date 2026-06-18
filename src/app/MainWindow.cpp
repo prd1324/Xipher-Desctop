@@ -7,10 +7,12 @@
 #include "ui/ChatPage.h"
 #include "ui/BackgroundWidget.h"
 #include "ui/Theme.h"
+#include "net/CallController.h"
 
 #include <QStackedWidget>
 #include <QVBoxLayout>
 #include <QLabel>
+#include <QTimer>
 
 MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     setWindowTitle(QStringLiteral("Xipher"));
@@ -50,9 +52,26 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
         enterChat();
     });
 
-    // Выход → останавливаем realtime, чистим сессию, назад на вход.
+    // Звонки: оркестратор + поллинг входящих.
+    callCtl_ = new CallController(api_, ws_, this, this);
+    connect(chat_, &ChatPage::callRequested, this,
+            [this](const QString& id, const QString& name, const QString& avatar) {
+        callCtl_->startOutgoing(id, name, avatar);
+    });
+    connect(api_, &ApiClient::incomingCall, this,
+            [this](const QString& id, const QString& name, const QString& type) {
+        callCtl_->onIncoming(id, name, type);
+    });
+    callPoll_ = new QTimer(this);
+    callPoll_->setInterval(2500);
+    connect(callPoll_, &QTimer::timeout, this, [this]() {
+        if (Session::instance().isAuthenticated()) api_->checkIncomingCalls();
+    });
+
+    // Выход → останавливаем realtime/поллинг, чистим сессию, назад на вход.
     connect(chat_, &ChatPage::logoutRequested, this, [this]() {
         ws_->stop();
+        if (callPoll_) callPoll_->stop();
         Session::instance().clear();
         stack_->setCurrentIndex(PageLogin);
     });
@@ -110,6 +129,7 @@ QWidget* MainWindow::buildSplash() {
 void MainWindow::enterChat() {
     stack_->setCurrentIndex(PageChat);
     chat_->load();   // грузим чаты + запускаем realtime
+    if (callPoll_) callPoll_->start();   // следим за входящими звонками
 }
 
 void MainWindow::tryRestoreSession() {

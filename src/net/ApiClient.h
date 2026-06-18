@@ -56,6 +56,16 @@ public:
                   long long fileSize, const QString& caption, const QString& tempId);
     void fetchFile(const QString& filePath);   // GET /files/... с токеном
 
+    // Звонки (сигналинг)
+    void getTurnConfig();
+    void callNotify(const QString& receiverId, const QString& callType);
+    void callOffer(const QString& receiverId, const QString& sdp);
+    void callAnswer(const QString& receiverId, const QString& sdp);
+    void callIce(const QString& receiverId, const QString& candidate);
+    void callEnd(const QString& receiverId);
+    void getCallOffer(const QString& callerId);
+    void checkIncomingCalls();
+
     // Люди и друзья.
     void getUserProfile(const QString& userId);
     void setContactName(const QString& contactId, const QString& customName);
@@ -87,6 +97,10 @@ signals:
     void usersFound(const QString& query, const QList<UserHit>& users);
     void profileLoaded(const QJsonObject& profile);
     void contactRenamed(const QString& contactId, const QString& newName, bool ok);
+
+    void turnConfigReady(const QStringList& iceServers);
+    void callOfferReady(const QString& callerId, const QString& sdp);
+    void incomingCall(const QString& callerId, const QString& callerName, const QString& callType);
     void friendRequestSent(const QString& username, bool ok, const QString& message);
     void friendRequestsLoaded(const QList<FriendRequest>& requests);
     void friendActionDone(const QString& requestId, bool accepted, bool ok);

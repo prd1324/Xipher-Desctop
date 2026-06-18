@@ -83,5 +83,16 @@ void WsClient::onTextMessage(const QString& text) {
         const QString tempId = o.value(QStringLiteral("temp_id")).toString();
         emit newMessage(peerId, m, tempId);
     }
+    else if (type == QStringLiteral("call_answer")) {
+        emit callAnswerReceived(o.value(QStringLiteral("from_user_id")).toString(),
+                                o.value(QStringLiteral("answer")).toString());
+    }
+    else if (type == QStringLiteral("call_ice_candidate")) {
+        emit callIceReceived(o.value(QStringLiteral("from_user_id")).toString(),
+                             o.value(QStringLiteral("candidate")).toString());
+    }
+    else if (type == QStringLiteral("call_end") || type == QStringLiteral("call_ended")) {
+        emit callEnded(o.value(QStringLiteral("from_user_id")).toString());
+    }
     // auth_success / auth_error / прочие типы пока не требуют обработки.
 }

@@ -5,9 +5,11 @@ class QStackedWidget;
 class QWidget;
 class ApiClient;
 class WsClient;
+class CallController;
 class LoginPage;
 class RegisterPage;
 class ChatPage;
+class QTimer;
 
 // Главное окно: переключает экраны вход / регистрация / домашний.
 class MainWindow : public QMainWindow {
@@ -29,4 +31,6 @@ private:
     LoginPage*      login_   = nullptr;
     RegisterPage*   register_ = nullptr;
     ChatPage*       chat_    = nullptr;
+    CallController* callCtl_ = nullptr;
+    QTimer*         callPoll_ = nullptr;
 };
