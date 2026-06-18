@@ -16,6 +16,7 @@ class RecordingBar;
 class EmojiPicker;
 class ChecklistWidget;
 class EmptyChatGreeting;
+class ProfilePanel;
 class QNetworkAccessManager;
 class QListWidget;
 class QLineEdit;
@@ -98,9 +99,11 @@ private:
 
     // Переписка
     QStackedWidget* convStack_ = nullptr;   // 0 — пусто, 1 — диалог
+    QWidget*     peerHeader_ = nullptr;
     QLabel*      peerName_   = nullptr;
     QLabel*      peerStatus_ = nullptr;
     QLabel*      peerAvatar_ = nullptr;
+    ProfilePanel* profilePanel_ = nullptr;
     QScrollArea* msgScroll_  = nullptr;
     QWidget*     msgContainer_ = nullptr;
     QVBoxLayout* msgLayout_  = nullptr;

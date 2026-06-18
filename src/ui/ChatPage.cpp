@@ -9,6 +9,7 @@
 #include "ui/ModalOverlay.h"
 #include "ui/EmptyChatGreeting.h"
 #include "ui/AnimatedEmojiLabel.h"
+#include "ui/ProfilePanel.h"
 #include "net/ApiClient.h"
 #include "net/WsClient.h"
 #include "net/Session.h"
@@ -225,6 +226,8 @@ void ChatPage::buildUi() {
     setStyleSheet(QStringLiteral(R"QSS(
 #sidebar { background:#131218; border-right:1px solid rgba(255,255,255,0.10); }
 #sideHeader, #convHeader { background:#131218; border-bottom:1px solid rgba(255,255,255,0.10); }
+#peerHeader { border-radius:10px; }
+#peerHeader:hover { background:#1A1822; }
 #brandTitle { font-size:18px; font-weight:800; color:#F3F1F8; }
 #searchBox {
     background:#1A1822; border:1px solid rgba(255,255,255,0.10); border-radius:12px;
@@ -362,20 +365,30 @@ QMenu::separator { height:1px; background:rgba(255,255,255,0.08); margin:4px 8px
     convHeader->setObjectName(QStringLiteral("convHeader"));
     convHeader->setFixedHeight(60);
     auto* chl = new QHBoxLayout(convHeader);
-    chl->setContentsMargins(16, 0, 16, 0);
-    chl->setSpacing(12);
+    chl->setContentsMargins(8, 0, 16, 0);
+    chl->setSpacing(0);
+
+    // Кликабельный кластер (аватар + имя/статус) → открывает профиль (как в TG).
+    peerHeader_ = new QWidget(convHeader);
+    peerHeader_->setObjectName(QStringLiteral("peerHeader"));
+    peerHeader_->setCursor(Qt::PointingHandCursor);
+    peerHeader_->installEventFilter(this);
+    auto* phl = new QHBoxLayout(peerHeader_);
+    phl->setContentsMargins(8, 0, 8, 0);
+    phl->setSpacing(12);
     peerAvatar_ = makeAvatar(QString(), QStringLiteral("?"), 40);
-    peerAvatar_->setParent(convHeader);
+    peerAvatar_->setParent(peerHeader_);
     auto* names = new QVBoxLayout();
     names->setSpacing(0);
-    peerName_ = new QLabel(convHeader);
+    peerName_ = new QLabel(peerHeader_);
     peerName_->setObjectName(QStringLiteral("peerName"));
-    peerStatus_ = new QLabel(convHeader);
+    peerStatus_ = new QLabel(peerHeader_);
     peerStatus_->setObjectName(QStringLiteral("peerStatus"));
     names->addWidget(peerName_);
     names->addWidget(peerStatus_);
-    chl->addWidget(peerAvatar_);
-    chl->addLayout(names);
+    phl->addWidget(peerAvatar_);
+    phl->addLayout(names);
+    chl->addWidget(peerHeader_);
     chl->addStretch();
 
     msgScroll_ = new QScrollArea(conv);
@@ -686,6 +699,21 @@ void ChatPage::updateGreeting() {
 bool ChatPage::eventFilter(QObject* obj, QEvent* e) {
     if (greeting_ && obj == msgScroll_->viewport() && e->type() == QEvent::Resize) {
         if (greeting_->isVisible()) greeting_->setGeometry(msgScroll_->viewport()->rect());
+    }
+    // Клик по шапке диалога → профиль собеседника.
+    if (obj == peerHeader_ && e->type() == QEvent::MouseButtonRelease && !currentPeerId_.isEmpty()) {
+        if (!profilePanel_) {
+            profilePanel_ = new ProfilePanel(api_, window());
+            connect(profilePanel_, &ProfilePanel::messageRequested, this,
+                    [this](const QString& uid) {
+                if (uid != currentPeerId_) {
+                    const int idx = indexOfChat(uid);
+                    if (idx >= 0) openChat(chats_[idx]);
+                }
+            });
+        }
+        profilePanel_->openFor(currentPeerId_);
+        return true;
     }
     return QWidget::eventFilter(obj, e);
 }

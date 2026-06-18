@@ -245,6 +245,16 @@ void ApiClient::sendRaw(const QString& receiverId, const QString& content,
 
 // ── Люди и друзья ─────────────────────────────────────────────────────────────
 
+void ApiClient::getUserProfile(const QString& userId) {
+    QJsonObject body{{QStringLiteral("token"), Session::instance().token},
+                     {QStringLiteral("user_id"), userId}};
+    postJson(QStringLiteral("/api/get-user-profile"), body,
+             [this](const QJsonObject& obj, bool ok, const QString& netErr) {
+        if (!ok && obj.isEmpty()) { emit chatError(QStringLiteral("profile"), netErr); return; }
+        emit profileLoaded(obj);
+    });
+}
+
 void ApiClient::searchUsers(const QString& query) {
     QJsonObject body{{QStringLiteral("token"), Session::instance().token},
                      {QStringLiteral("query"), query}};

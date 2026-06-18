@@ -57,6 +57,7 @@ public:
     void fetchFile(const QString& filePath);   // GET /files/... с токеном
 
     // Люди и друзья.
+    void getUserProfile(const QString& userId);
     void searchUsers(const QString& query);
     void sendFriendRequest(const QString& username);
     void getFriendRequests();
@@ -83,6 +84,7 @@ signals:
     void fileFetched(const QString& filePath, const QByteArray& bytes);
 
     void usersFound(const QString& query, const QList<UserHit>& users);
+    void profileLoaded(const QJsonObject& profile);
     void friendRequestSent(const QString& username, bool ok, const QString& message);
     void friendRequestsLoaded(const QList<FriendRequest>& requests);
     void friendActionDone(const QString& requestId, bool accepted, bool ok);
