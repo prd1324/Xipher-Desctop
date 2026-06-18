@@ -47,8 +47,8 @@ void CallEngine::createPeerConnection() {
     for (const QString& s : iceServers_) {
         try { config.iceServers.emplace_back(s.toStdString()); } catch (...) {}
     }
-    if (config.iceServers.empty())
-        config.iceServers.emplace_back("stun:stun.l.google.com:19302");
+    // Только свои сервера (из /api/turn-config). Сторонние STUN не используем.
+    qInfo() << "[call] ice servers count" << int(config.iceServers.size()) << iceServers_;
 
     pc_ = std::make_shared<rtc::PeerConnection>(config);
 

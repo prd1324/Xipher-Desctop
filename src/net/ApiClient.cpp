@@ -539,9 +539,16 @@ void ApiClient::getCallIce(const QString& otherId) {
               {QStringLiteral("receiver_id"), otherId}},
              [this, otherId](const QJsonObject& obj, bool ok, const QString&) {
         QStringList cands;
-        QJsonArray arr = obj.value(QStringLiteral("candidates")).toArray();
-        if (arr.isEmpty()) arr = obj.value(QStringLiteral("data")).toObject()
-                                    .value(QStringLiteral("candidates")).toArray();
+        const QJsonValue cv = obj.value(QStringLiteral("data")).toObject().value(QStringLiteral("candidates"));
+        // Сервер отдаёт candidates как СТРОКУ с JSON-массивом внутри: "[\"...\"]".
+        QJsonArray arr;
+        if (cv.isString())      arr = QJsonDocument::fromJson(cv.toString().toUtf8()).array();
+        else if (cv.isArray())  arr = cv.toArray();
+        else {
+            const QJsonValue top = obj.value(QStringLiteral("candidates"));
+            if (top.isString())     arr = QJsonDocument::fromJson(top.toString().toUtf8()).array();
+            else                    arr = top.toArray();
+        }
         for (const QJsonValue& v : arr) {
             if (v.isString()) cands << v.toString();
             else cands << v.toObject().value(QStringLiteral("candidate")).toString();
