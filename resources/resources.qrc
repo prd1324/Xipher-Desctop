@@ -1,6 +1,9 @@
 <!DOCTYPE RCC>
 <RCC version="1.0">
-  <!-- Зарезервировано под ресурсы (иконки/шрифты Inter) в следующих версиях. -->
   <qresource prefix="/">
+    <!-- Анимированные эмодзи (Google Noto Animated Emoji, Apache-2.0) -->
+    <file>emoji/1f44b.gif</file>
+    <file>emoji/1f60a.gif</file>
+    <file>emoji/1f389.gif</file>
   </qresource>
 </RCC>

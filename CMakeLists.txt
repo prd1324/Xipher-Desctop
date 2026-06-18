@@ -35,6 +35,7 @@ set(SOURCES
     src/ui/AvatarUtil.cpp
     src/ui/Checklist.cpp
     src/ui/ModalOverlay.cpp
+    src/ui/EmptyChatGreeting.cpp
 )
 
 set(HEADERS
@@ -58,6 +59,7 @@ set(HEADERS
     src/ui/Icons.h
     src/ui/Checklist.h
     src/ui/ModalOverlay.h
+    src/ui/EmptyChatGreeting.h
 )
 
 qt_add_executable(Xipher

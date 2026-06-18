@@ -7,12 +7,14 @@
 #include "ui/AvatarUtil.h"
 #include "ui/Checklist.h"
 #include "ui/ModalOverlay.h"
+#include "ui/EmptyChatGreeting.h"
 #include "net/ApiClient.h"
 #include "net/WsClient.h"
 #include "net/Session.h"
 #include "net/VoiceRecorder.h"
 
 #include <QMenu>
+#include <QEvent>
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QStandardPaths>
@@ -353,6 +355,16 @@ QMenu::separator { height:1px; background:rgba(255,255,255,0.08); margin:4px 8px
     msgLayout_->addStretch();   // прижимаем сообщения к низу
     msgScroll_->setWidget(msgContainer_);
 
+    // Приветствие пустого чата — оверлей поверх области сообщений.
+    greeting_ = new EmptyChatGreeting(msgScroll_);
+    greeting_->hide();
+    msgScroll_->viewport()->installEventFilter(this);
+    connect(greeting_, &EmptyChatGreeting::greetingClicked, this, [this](const QString& e) {
+        if (currentPeerId_.isEmpty()) return;
+        composer_->setText(e);
+        onSendClicked();
+    });
+
     auto* composerBar = new QWidget(conv);
     composerBar->setObjectName(QStringLiteral("composerBar"));
     auto* cblOuter = new QVBoxLayout(composerBar);
@@ -620,6 +632,27 @@ void ChatPage::clearMessages() {
     shownIds_.clear();
     checklistWidgets_.clear();
     mergedChecklists_.clear();
+    bubbleCount_ = 0;
+    updateGreeting();
+}
+
+void ChatPage::updateGreeting() {
+    if (!greeting_) return;
+    const bool show = !currentPeerId_.isEmpty() && bubbleCount_ == 0;
+    if (show) {
+        greeting_->setGeometry(msgScroll_->viewport()->rect());
+        greeting_->raise();
+        greeting_->show();
+    } else {
+        greeting_->hide();
+    }
+}
+
+bool ChatPage::eventFilter(QObject* obj, QEvent* e) {
+    if (greeting_ && obj == msgScroll_->viewport() && e->type() == QEvent::Resize) {
+        if (greeting_->isVisible()) greeting_->setGeometry(msgScroll_->viewport()->rect());
+    }
+    return QWidget::eventFilter(obj, e);
 }
 
 void ChatPage::onMessagesLoaded(const QString& friendId, const QList<ChatMessage>& messages) {
@@ -641,6 +674,7 @@ void ChatPage::onMessagesLoaded(const QString& friendId, const QList<ChatMessage
         if (!m.id.isEmpty()) shownIds_.insert(m.id);
         addBubble(m);
     }
+    updateGreeting();
     scrollToBottom();
 }
 
@@ -858,6 +892,8 @@ void ChatPage::addBubble(const ChatMessage& msg) {
     else          { rl->addWidget(bubble); rl->addStretch(); }
 
     msgLayout_->addWidget(row);   // после стартового stretch → прижато к низу
+    ++bubbleCount_;
+    if (greeting_ && greeting_->isVisible()) greeting_->hide();
 }
 
 void ChatPage::scrollToBottom() {

@@ -15,6 +15,7 @@ class VoiceMessageWidget;
 class RecordingBar;
 class EmojiPicker;
 class ChecklistWidget;
+class EmptyChatGreeting;
 class QNetworkAccessManager;
 class QListWidget;
 class QLineEdit;
@@ -72,6 +73,9 @@ private slots:
     void sendLocation();
     void onFileUploaded(const QString& filePath, const QString& fileName, long long fileSize, const QString& tempId);
 
+protected:
+    bool eventFilter(QObject* obj, QEvent* e) override;
+
 private:
     void buildUi();
     void playVoice(const QString& serverPath);
@@ -81,6 +85,7 @@ private:
     void openChat(const Chat& chat);
     void addBubble(const ChatMessage& msg);
     void clearMessages();
+    void updateGreeting();   // показать/скрыть пустой-чат приветствие
     void scrollToBottom();
     void bumpChat(const QString& peerId, const QString& lastText, const QString& time, bool incrementUnread);
 
@@ -99,6 +104,8 @@ private:
     QScrollArea* msgScroll_  = nullptr;
     QWidget*     msgContainer_ = nullptr;
     QVBoxLayout* msgLayout_  = nullptr;
+    EmptyChatGreeting* greeting_ = nullptr;
+    int          bubbleCount_ = 0;   // сколько сообщений сейчас в переписке
     QStackedWidget* composerStack_ = nullptr;  // 0 — ввод, 1 — запись
     QLineEdit*   composer_   = nullptr;
     QPushButton* sendBtn_    = nullptr;
