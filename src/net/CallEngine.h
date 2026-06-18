@@ -3,6 +3,8 @@
 #include <QString>
 #include <QStringList>
 #include <QByteArray>
+#include <QList>
+#include <QPair>
 #include <memory>
 
 namespace rtc { class PeerConnection; class Track; class RtpPacketizationConfig; }
@@ -55,6 +57,9 @@ private:
     bool caller_ = false;
     bool muted_ = false;
     bool audioStarted_ = false;
+    bool hasRemoteDesc_ = false;
+    QList<QPair<QString, QString>> pendingCands_;   // кандидаты до remote-description
+    void flushCandidates();
 
     // Audio (48 kHz mono, 20 ms кадры)
     QAudioSource* mic_ = nullptr;

@@ -124,6 +124,8 @@ void CallEngine::startAsCallee(const QString& remoteOffer) {
     // Трек НЕ добавляем заранее — он придёт из offer через onTrack.
     try {
         pc_->setRemoteDescription(rtc::Description(remoteOffer.toStdString(), "offer"));
+        hasRemoteDesc_ = true;
+        flushCandidates();
         pc_->setLocalDescription();   // → onLocalDescription(answer)
     } catch (const std::exception& e) {
         qWarning() << "[call] setRemoteDescription(offer) FAILED:" << e.what();
@@ -133,8 +135,11 @@ void CallEngine::startAsCallee(const QString& remoteOffer) {
 
 void CallEngine::setRemoteAnswer(const QString& sdp) {
     if (!pc_) return;
-    try { pc_->setRemoteDescription(rtc::Description(sdp.toStdString(), "answer")); }
-    catch (const std::exception& e) {
+    try {
+        pc_->setRemoteDescription(rtc::Description(sdp.toStdString(), "answer"));
+        hasRemoteDesc_ = true;
+        flushCandidates();
+    } catch (const std::exception& e) {
         qWarning() << "[call] setRemoteDescription(answer) FAILED:" << e.what();
         emit failed(QString::fromUtf8(e.what()));
     }
@@ -142,8 +147,17 @@ void CallEngine::setRemoteAnswer(const QString& sdp) {
 
 void CallEngine::addRemoteCandidate(const QString& cand, const QString& mid) {
     if (!pc_) return;
+    if (!hasRemoteDesc_) { pendingCands_.append({cand, mid}); return; }   // буфер до remote-desc
     try { pc_->addRemoteCandidate(rtc::Candidate(cand.toStdString(), mid.toStdString())); }
     catch (const std::exception& e) { qWarning() << "[call] addRemoteCandidate failed:" << e.what(); }
+}
+
+void CallEngine::flushCandidates() {
+    for (const auto& c : pendingCands_) {
+        try { pc_->addRemoteCandidate(rtc::Candidate(c.first.toStdString(), c.second.toStdString())); }
+        catch (const std::exception& e) { qWarning() << "[call] flush candidate failed:" << e.what(); }
+    }
+    pendingCands_.clear();
 }
 
 void CallEngine::setMuted(bool muted) { muted_ = muted; }
@@ -227,5 +241,7 @@ void CallEngine::hangup() {
     stopAudioIo();
     track_.reset();
     rtpConfig_.reset();
+    hasRemoteDesc_ = false;
+    pendingCands_.clear();
     if (pc_) { try { pc_->close(); } catch (...) {} pc_.reset(); }
 }

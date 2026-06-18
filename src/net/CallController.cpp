@@ -9,6 +9,62 @@
 #include <QTimer>
 #include <QDateTime>
 #include <QDebug>
+#include <QJsonDocument>
+#include <QJsonObject>
+
+namespace {
+// Веб шлёт offer/answer как JSON {"type","sdp"}, ICE как {"candidate","sdpMid",...}.
+QString wrapSdp(const QString& type, const QString& sdp) {
+    return QString::fromUtf8(QJsonDocument(QJsonObject{
+        {QStringLiteral("type"), type}, {QStringLiteral("sdp"), sdp}}).toJson(QJsonDocument::Compact));
+}
+QString wrapCandidate(const QString& cand) {
+    return QString::fromUtf8(QJsonDocument(QJsonObject{
+        {QStringLiteral("candidate"), cand}, {QStringLiteral("sdpMid"), QStringLiteral("0")},
+        {QStringLiteral("sdpMLineIndex"), 0}}).toJson(QJsonDocument::Compact));
+}
+QString unwrapSdp(const QString& payload) {
+    QString s = payload.trimmed();
+    QJsonParseError e{};
+    QJsonDocument d = QJsonDocument::fromJson(s.toUtf8(), &e);
+    if (e.error == QJsonParseError::NoError && d.isObject()) {
+        const QString sdp = d.object().value(QStringLiteral("sdp")).toString();
+        if (!sdp.isEmpty()) return sdp;
+    }
+    // возможно base64
+    if (!s.contains('\n') && !s.contains(' ')) {
+        const QByteArray dec = QByteArray::fromBase64(s.toUtf8());
+        QJsonDocument d2 = QJsonDocument::fromJson(dec);
+        if (d2.isObject()) {
+            const QString sdp = d2.object().value(QStringLiteral("sdp")).toString();
+            if (!sdp.isEmpty()) return sdp;
+        }
+        const QString ds = QString::fromUtf8(dec);
+        if (ds.contains(QStringLiteral("v=0"))) return ds;
+    }
+    return s;   // уже сырой SDP
+}
+// → {candidate, sdpMid}
+QPair<QString, QString> unwrapCandidate(const QString& payload) {
+    QString s = payload.trimmed();
+    QJsonDocument d = QJsonDocument::fromJson(s.toUtf8());
+    if (d.isObject()) {
+        const QJsonObject o = d.object();
+        return { o.value(QStringLiteral("candidate")).toString(),
+                 o.value(QStringLiteral("sdpMid")).toString(QStringLiteral("0")) };
+    }
+    if (!s.contains(' ') && !s.startsWith(QStringLiteral("candidate"))) {
+        const QByteArray dec = QByteArray::fromBase64(s.toUtf8());
+        QJsonDocument d2 = QJsonDocument::fromJson(dec);
+        if (d2.isObject()) {
+            const QJsonObject o = d2.object();
+            return { o.value(QStringLiteral("candidate")).toString(),
+                     o.value(QStringLiteral("sdpMid")).toString(QStringLiteral("0")) };
+        }
+    }
+    return { s, QStringLiteral("0") };
+}
+}
 
 CallController::CallController(ApiClient* api, WsClient* ws, QWidget* window, QObject* parent)
     : QObject(parent), api_(api), ws_(ws), window_(window) {
@@ -45,9 +101,9 @@ CallController::CallController(ApiClient* api, WsClient* ws, QWidget* window, QO
 
 CallEngine* CallController::createEngine() {
     auto* e = new CallEngine(this);
-    connect(e, &CallEngine::localOffer, this, [this](const QString& sdp) { api_->callOffer(peerId_, sdp); });
-    connect(e, &CallEngine::localAnswer, this, [this](const QString& sdp) { api_->callAnswer(peerId_, sdp); });
-    connect(e, &CallEngine::localCandidate, this, [this](const QString& cand, const QString&) { api_->callIce(peerId_, cand); });
+    connect(e, &CallEngine::localOffer, this, [this](const QString& sdp) { api_->callOffer(peerId_, wrapSdp(QStringLiteral("offer"), sdp)); });
+    connect(e, &CallEngine::localAnswer, this, [this](const QString& sdp) { api_->callAnswer(peerId_, wrapSdp(QStringLiteral("answer"), sdp)); });
+    connect(e, &CallEngine::localCandidate, this, [this](const QString& cand, const QString&) { api_->callIce(peerId_, wrapCandidate(cand)); });
     connect(e, &CallEngine::connected, this, [this]() {
         connected_ = true;
         if (overlay_) { overlay_->setStatus(QStringLiteral("00:00")); overlay_->startCallTimer(); }
@@ -116,9 +172,10 @@ void CallController::acceptIncoming() {
     api_->getCallOffer(peerId_);
 }
 
-void CallController::applyOffer(const QString& callerId, const QString& sdp) {
-    if (caller_ || engine_ || callerId != peerId_ || sdp.isEmpty()) return;
-    qInfo() << "[call] got remote offer, len" << sdp.size();
+void CallController::applyOffer(const QString& callerId, const QString& payload) {
+    if (caller_ || engine_ || callerId != peerId_ || payload.isEmpty()) return;
+    const QString sdp = unwrapSdp(payload);
+    qInfo() << "[call] got remote offer, sdp len" << sdp.size();
     offerFetched_ = true;
     engine_ = createEngine();
     onIce_ = [this, sdp](const QStringList& servers) {
@@ -127,9 +184,10 @@ void CallController::applyOffer(const QString& callerId, const QString& sdp) {
     api_->getTurnConfig();
 }
 
-void CallController::applyAnswer(const QString& calleeId, const QString& sdp) {
-    if (!engine_ || answerApplied_ || calleeId != peerId_ || sdp.isEmpty()) return;
-    qInfo() << "[call] got remote answer, len" << sdp.size();
+void CallController::applyAnswer(const QString& calleeId, const QString& payload) {
+    if (!engine_ || answerApplied_ || calleeId != peerId_ || payload.isEmpty()) return;
+    const QString sdp = unwrapSdp(payload);
+    qInfo() << "[call] got remote answer, sdp len" << sdp.size();
     answerApplied_ = true;
     engine_->setRemoteAnswer(sdp);
 }
@@ -139,7 +197,8 @@ void CallController::addCandidates(const QString& otherId, const QStringList& ca
     for (const QString& c : cands) {
         if (c.isEmpty() || addedCandidates_.contains(c)) continue;
         addedCandidates_.insert(c);
-        engine_->addRemoteCandidate(c, QStringLiteral("0"));
+        const QPair<QString, QString> cm = unwrapCandidate(c);
+        if (!cm.first.isEmpty()) engine_->addRemoteCandidate(cm.first, cm.second);
     }
 }
 
