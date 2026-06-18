@@ -100,6 +100,21 @@ QStringList emojiOnlyClusters(const QString& content) {
     return clusters;
 }
 
+const QString kCallEventPrefix = QStringLiteral("[[XIPHER_CALL_EVENT]]");
+
+// Подпись лога звонка (как в вебе): отклонён / без ответа / пропущенный.
+QString callEventLabel(const QString& content, bool outgoing) {
+    QString status;
+    const QString raw = content.mid(kCallEventPrefix.length()).trimmed();
+    const QJsonObject o = QJsonDocument::fromJson(raw.toUtf8()).object();
+    status = o.value(QStringLiteral("status")).toString();
+    if (status == QStringLiteral("rejected") || status == QStringLiteral("declined"))
+        return QStringLiteral("Звонок отклонён");
+    if (status == QStringLiteral("cancelled"))
+        return outgoing ? QStringLiteral("Звонок отменён") : QStringLiteral("Пропущенный звонок");
+    return outgoing ? QStringLiteral("Звонок без ответа") : QStringLiteral("Пропущенный звонок");
+}
+
 QJsonObject parseChecklist(const QString& content) {
     if (!content.startsWith(ChecklistProto::kPrefix)) return {};
     const QString raw = content.mid(ChecklistProto::kPrefix.length()).trimmed();
@@ -858,7 +873,24 @@ void ChatPage::addBubble(const ChatMessage& msg) {
         bl->addWidget(reply);
     }
 
-    if (msg.isVoice()) {
+    if (msg.content.startsWith(kCallEventPrefix)) {
+        // Лог звонка (как в Telegram): иконка телефона + подпись, клик — перезвонить.
+        auto* crow = new QWidget(bubble);
+        crow->setStyleSheet(QStringLiteral("background:transparent;"));
+        auto* cl = new QHBoxLayout(crow);
+        cl->setContentsMargins(0, 2, 0, 2);
+        cl->setSpacing(10);
+        auto* ic = new QLabel(crow);
+        ic->setPixmap(Icons::pixmap(Icons::Phone, 20,
+            msg.sent ? QColor(0xF0, 0xEC, 0xFA) : QColor(0x8B, 0x5C, 0xF6)));
+        auto* lbl = new QLabel(callEventLabel(msg.content, msg.sent), crow);
+        lbl->setStyleSheet(QString("color:%1;font-size:14px;font-weight:600;")
+            .arg(msg.sent ? QStringLiteral("#F0ECFA") : QStringLiteral("#F3F1F8")));
+        cl->addWidget(ic);
+        cl->addWidget(lbl);
+        cl->addStretch();
+        bl->addWidget(crow);
+    } else if (msg.isVoice()) {
         // Голосовое (Telegram-style): ▶/⏸ + waveform + время.
         const QString seed = msg.id.isEmpty() ? msg.filePath : msg.id;
         auto* voice = new VoiceMessageWidget(seed, msg.sent, bubble);

@@ -39,6 +39,8 @@ private:
     bool         caller_ = false;
     bool         answerApplied_ = false;
     bool         offerFetched_ = false;
+    bool         connected_ = false;
+    void sendCallEvent(const QString& status);
     QTimer*      poll_ = nullptr;
     QSet<QString> addedCandidates_;
     std::function<void(const QStringList&)> onIce_;

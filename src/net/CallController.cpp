@@ -7,6 +7,7 @@
 
 #include <QWidget>
 #include <QTimer>
+#include <QDateTime>
 
 CallController::CallController(ApiClient* api, WsClient* ws, QWidget* window, QObject* parent)
     : QObject(parent), api_(api), ws_(ws), window_(window) {
@@ -46,6 +47,7 @@ CallEngine* CallController::createEngine() {
     connect(e, &CallEngine::localAnswer, this, [this](const QString& sdp) { api_->callAnswer(peerId_, sdp); });
     connect(e, &CallEngine::localCandidate, this, [this](const QString& cand, const QString&) { api_->callIce(peerId_, cand); });
     connect(e, &CallEngine::connected, this, [this]() {
+        connected_ = true;
         if (overlay_) { overlay_->setStatus(QStringLiteral("00:00")); overlay_->startCallTimer(); }
     });
     connect(e, &CallEngine::ended, this, [this]() { cleanup(); });
@@ -57,13 +59,16 @@ void CallController::startOutgoing(const QString& peerId, const QString& peerNam
     if (busy() || peerId.isEmpty()) return;
     if (peerId == Session::instance().userId) return;
     peerId_ = peerId; peerName_ = peerName; avatarUrl_ = avatarUrl; caller_ = true;
-    answerApplied_ = false; offerFetched_ = false; addedCandidates_.clear();
+    answerApplied_ = false; offerFetched_ = false; addedCandidates_.clear(); connected_ = false;
 
     overlay_ = new CallOverlay(window_);
     overlay_->setPeer(peerName, avatarUrl);
     overlay_->setIncoming(false);
     overlay_->setStatus(QStringLiteral("Вызов…"));
-    connect(overlay_, &CallOverlay::hangup, this, [this]() { api_->callEnd(peerId_); cleanup(); });
+    connect(overlay_, &CallOverlay::hangup, this, [this]() {
+        if (!connected_) sendCallEvent(QStringLiteral("cancelled"));   // лог «Звонок отменён»
+        api_->callEnd(peerId_); cleanup();
+    });
     connect(overlay_, &CallOverlay::muteToggled, this, [this](bool m) { if (engine_) engine_->setMuted(m); });
     overlay_->show();
     overlay_->raise();
@@ -89,7 +94,10 @@ void CallController::onIncoming(const QString& callerId, const QString& callerNa
     overlay_->setIncoming(true);
     overlay_->setStatus(QStringLiteral("Входящий звонок…"));
     connect(overlay_, &CallOverlay::accept, this, [this]() { acceptIncoming(); });
-    connect(overlay_, &CallOverlay::decline, this, [this]() { api_->callEnd(peerId_); cleanup(); });
+    connect(overlay_, &CallOverlay::decline, this, [this]() {
+        sendCallEvent(QStringLiteral("rejected"));
+        api_->callEnd(peerId_); cleanup();
+    });
     connect(overlay_, &CallOverlay::hangup, this, [this]() { api_->callEnd(peerId_); cleanup(); });
     connect(overlay_, &CallOverlay::muteToggled, this, [this](bool m) { if (engine_) engine_->setMuted(m); });
     overlay_->show();
@@ -127,6 +135,15 @@ void CallController::addCandidates(const QString& otherId, const QStringList& ca
         addedCandidates_.insert(c);
         engine_->addRemoteCandidate(c, QStringLiteral("0"));
     }
+}
+
+void CallController::sendCallEvent(const QString& status) {
+    if (peerId_.isEmpty()) return;
+    const qint64 ts = QDateTime::currentMSecsSinceEpoch();
+    const QString content = QStringLiteral("[[XIPHER_CALL_EVENT]]{\"status\":\"%1\",\"ts\":%2,\"v\":1}")
+                                .arg(status).arg(ts);
+    api_->sendRaw(peerId_, content, QStringLiteral("text"),
+                  QStringLiteral("ce_%1").arg(ts));
 }
 
 void CallController::cleanup() {
