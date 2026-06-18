@@ -517,6 +517,35 @@ void ApiClient::getCallOffer(const QString& callerId) {
     });
 }
 
+void ApiClient::getCallAnswer(const QString& calleeId) {
+    postJson(QStringLiteral("/api/get-call-answer"),
+             {{QStringLiteral("token"), Session::instance().token},
+              {QStringLiteral("receiver_id"), calleeId}},
+             [this, calleeId](const QJsonObject& obj, bool ok, const QString&) {
+        const QJsonObject data = obj.value(QStringLiteral("data")).toObject();
+        QString sdp = data.value(QStringLiteral("answer")).toString();
+        if (sdp.isEmpty()) sdp = obj.value(QStringLiteral("answer")).toString();
+        if (!sdp.isEmpty()) emit callAnswerReady(calleeId, sdp);
+    });
+}
+
+void ApiClient::getCallIce(const QString& otherId) {
+    postJson(QStringLiteral("/api/get-call-ice"),
+             {{QStringLiteral("token"), Session::instance().token},
+              {QStringLiteral("receiver_id"), otherId}},
+             [this, otherId](const QJsonObject& obj, bool ok, const QString&) {
+        QStringList cands;
+        QJsonArray arr = obj.value(QStringLiteral("candidates")).toArray();
+        if (arr.isEmpty()) arr = obj.value(QStringLiteral("data")).toObject()
+                                    .value(QStringLiteral("candidates")).toArray();
+        for (const QJsonValue& v : arr) {
+            if (v.isString()) cands << v.toString();
+            else cands << v.toObject().value(QStringLiteral("candidate")).toString();
+        }
+        if (!cands.isEmpty()) emit callIceBatch(otherId, cands);
+    });
+}
+
 void ApiClient::checkIncomingCalls() {
     postJson(QStringLiteral("/api/check-incoming-calls"),
              {{QStringLiteral("token"), Session::instance().token}},

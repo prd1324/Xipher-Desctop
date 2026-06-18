@@ -61,7 +61,11 @@ void CallEngine::createPeerConnection() {
         emit localCandidate(QString::fromStdString(std::string(cand)),
                             QString::fromStdString(cand.mid()));
     });
+    pc_->onGatheringStateChange([](rtc::PeerConnection::GatheringState s) {
+        qInfo() << "[call] gathering state" << int(s);
+    });
     pc_->onStateChange([this](rtc::PeerConnection::State state) {
+        qInfo() << "[call] pc state" << int(state);
         if (state == rtc::PeerConnection::State::Connected) {
             QMetaObject::invokeMethod(this, [this]() { startAudioIo(); emit connected(); });
         } else if (state == rtc::PeerConnection::State::Disconnected ||

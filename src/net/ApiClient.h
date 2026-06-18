@@ -64,6 +64,8 @@ public:
     void callIce(const QString& receiverId, const QString& candidate);
     void callEnd(const QString& receiverId);
     void getCallOffer(const QString& callerId);
+    void getCallAnswer(const QString& calleeId);
+    void getCallIce(const QString& otherId);
     void checkIncomingCalls();
 
     // Люди и друзья.
@@ -100,6 +102,8 @@ signals:
 
     void turnConfigReady(const QStringList& iceServers);
     void callOfferReady(const QString& callerId, const QString& sdp);
+    void callAnswerReady(const QString& calleeId, const QString& sdp);
+    void callIceBatch(const QString& otherId, const QStringList& candidates);
     void incomingCall(const QString& callerId, const QString& callerName, const QString& callType);
     void friendRequestSent(const QString& username, bool ok, const QString& message);
     void friendRequestsLoaded(const QList<FriendRequest>& requests);

@@ -2,6 +2,7 @@
 #include <QObject>
 #include <QString>
 #include <QStringList>
+#include <QSet>
 #include <functional>
 
 class ApiClient;
@@ -9,6 +10,7 @@ class WsClient;
 class CallEngine;
 class CallOverlay;
 class QWidget;
+class QTimer;
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  CallController — оркестрация звонка: связывает сигналинг (ApiClient/WsClient),
@@ -35,5 +37,13 @@ private:
     CallOverlay* overlay_ = nullptr;
     QString      peerId_, peerName_, avatarUrl_;
     bool         caller_ = false;
+    bool         answerApplied_ = false;
+    bool         offerFetched_ = false;
+    QTimer*      poll_ = nullptr;
+    QSet<QString> addedCandidates_;
     std::function<void(const QStringList&)> onIce_;
+
+    void applyAnswer(const QString& calleeId, const QString& sdp);
+    void applyOffer(const QString& callerId, const QString& sdp);
+    void addCandidates(const QString& otherId, const QStringList& cands);
 };
