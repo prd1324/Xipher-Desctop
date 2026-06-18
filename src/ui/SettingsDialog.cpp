@@ -83,11 +83,18 @@ QScrollArea* scrollPage(QWidget* content) {
     return sa;
 }
 
+// Ширина карточки под размер окна: на больших окнах — шире (правая часть просторнее),
+// на маленьких — ужимается, чтобы не вылезать за края.
+int settingsCardWidth(QWidget* parent) {
+    const int pw = parent ? parent->width() : 1000;
+    return qBound(660, pw - 90, 920);
+}
+
 } // namespace
 
 SettingsDialog::SettingsDialog(ApiClient* api, QWidget* parent)
-    : ModalOverlay(parent, 680), api_(api) {
-    card()->setFixedHeight(540);
+    : ModalOverlay(parent, settingsCardWidth(parent)), api_(api) {
+    card()->setFixedHeight(560);
     card()->setStyleSheet(QStringLiteral(R"QSS(
 #modalCard{background:#17151E;border:1px solid rgba(255,255,255,0.08);border-radius:18px;}
 QLabel{color:#F3F1F8;}
