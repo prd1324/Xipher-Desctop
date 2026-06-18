@@ -1655,6 +1655,7 @@ void ChatPage::onEmojiClicked() {
 void ChatPage::onAttachClicked() {
     const QColor mclr(0xAC, 0xA6, 0xBD);
     QMenu menu(this);
+    QAction* photoAct = menu.addAction(Icons::icon(Icons::Image, 18, mclr), QStringLiteral("Фото"));
     QAction* fileAct = menu.addAction(Icons::icon(Icons::File, 18, mclr), QStringLiteral("Файл"));
     QAction* checklist = menu.addAction(Icons::icon(Icons::Checklist, 18, mclr),
                                         QStringLiteral("Чек-лист"));
@@ -1665,6 +1666,7 @@ void ChatPage::onAttachClicked() {
     QAction* geoLive = geo->addAction(QStringLiteral("Транслировать (Live, скоро)"));
     geoLive->setEnabled(false);
 
+    connect(photoAct, &QAction::triggered, this, &ChatPage::pickAndSendPhoto);
     connect(fileAct, &QAction::triggered, this, &ChatPage::pickAndSendFile);
     connect(checklist, &QAction::triggered, this, &ChatPage::openChecklistDialog);
     connect(geoSend, &QAction::triggered, this, &ChatPage::sendLocation);
@@ -1723,6 +1725,36 @@ void ChatPage::pickAndSendFile() {
     m.fileName = base;
     m.fileSize = bytes.size();
     m.filePath = fn;   // локальный путь
+    m.time = QTime::currentTime().toString(QStringLiteral("HH:mm"));
+    m.createdAt = QDateTime::currentDateTime().toString(Qt::ISODate);
+    currentMessages_.append(m);
+    addBubble(m);
+    scrollToBottom();
+
+    api_->uploadFile(bytes, base, tempId);
+}
+
+void ChatPage::pickAndSendPhoto() {
+    if (currentPeerId_.isEmpty()) return;
+    const QString fn = QFileDialog::getOpenFileName(this, QStringLiteral("Выберите фото"),
+        QString(), QStringLiteral("Изображения (*.jpg *.jpeg *.png *.gif *.webp)"));
+    if (fn.isEmpty()) return;
+    QFile f(fn);
+    if (!f.open(QIODevice::ReadOnly)) return;
+    const QByteArray bytes = f.readAll();
+    f.close();
+
+    const QString base = QFileInfo(fn).fileName();
+    const QString tempId = QStringLiteral("tmpf_%1").arg(++tempCounter_);
+    shownIds_.insert(tempId);
+    pendingFileReceiver_ = currentPeerId_;
+    pendingPhotoIds_.insert(tempId);   // пометка: это фото, а не файл
+
+    ChatMessage m;
+    m.id = tempId; m.sent = true; m.status = QStringLiteral("sent");
+    m.messageType = QStringLiteral("image");
+    m.fileName = base; m.fileSize = bytes.size();
+    m.filePath = fn;   // локальный путь → превью сразу
     m.time = QTime::currentTime().toString(QStringLiteral("HH:mm"));
     m.createdAt = QDateTime::currentDateTime().toString(Qt::ISODate);
     currentMessages_.append(m);
@@ -1809,6 +1841,14 @@ void ChatPage::sendLocation() {
 void ChatPage::onFileUploaded(const QString& filePath, const QString& fileName,
                               long long fileSize, const QString& tempId) {
     if (pendingFileReceiver_.isEmpty()) return;
+    const bool isPhoto = pendingPhotoIds_.remove(tempId);
+    if (isPhoto) {
+        api_->sendFile(pendingFileReceiver_, filePath, fileName, fileSize, QString(), tempId,
+                       QStringLiteral("image"));
+        bumpChat(pendingFileReceiver_, QStringLiteral("Фото"),
+                 QTime::currentTime().toString(QStringLiteral("HH:mm")), false);
+        return;
+    }
     const QString caption = QStringLiteral("📎 ") + fileName;
     api_->sendFile(pendingFileReceiver_, filePath, fileName, fileSize, caption, tempId);
     bumpChat(pendingFileReceiver_, caption,

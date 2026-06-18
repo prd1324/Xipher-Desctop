@@ -76,6 +76,7 @@ private slots:
     void onAttachClicked();
     void onTimerClicked();
     void pickAndSendFile();
+    void pickAndSendPhoto();
     void openChecklistDialog();
     void sendLocation();
     void toggleSearch();
@@ -153,6 +154,7 @@ private:
 
     // Файлы: отложенная отправка/открытие
     QString pendingFileReceiver_;
+    QSet<QString> pendingPhotoIds_;   // temp_id'ы, которые надо отправить как image
     QHash<QString, QString> pendingFileOpen_;   // серверный путь → имя для сохранения
 
     // Чек-листы (live-обновления) + гео

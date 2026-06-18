@@ -975,19 +975,20 @@ void ApiClient::uploadFile(const QByteArray& bytes, const QString& fileName, con
 }
 
 void ApiClient::sendFile(const QString& receiverId, const QString& filePath, const QString& fileName,
-                         long long fileSize, const QString& caption, const QString& tempId) {
+                         long long fileSize, const QString& caption, const QString& tempId,
+                         const QString& messageType) {
     QJsonObject body{
         {QStringLiteral("token"), Session::instance().token},
         {QStringLiteral("receiver_id"), receiverId},
         {QStringLiteral("content"), caption},
-        {QStringLiteral("message_type"), QStringLiteral("file")},
+        {QStringLiteral("message_type"), messageType},
         {QStringLiteral("file_path"), filePath},
         {QStringLiteral("file_name"), fileName},
         {QStringLiteral("file_size"), static_cast<double>(fileSize)},
         {QStringLiteral("temp_id"), tempId}
     };
     postJson(QStringLiteral("/api/send-message"), body,
-             [this, receiverId, filePath, fileName, fileSize, caption, tempId](
+             [this, receiverId, filePath, fileName, fileSize, caption, tempId, messageType](
                  const QJsonObject& obj, bool ok, const QString& netErr) {
         if (!ok && obj.isEmpty()) { emit chatError(QStringLiteral("send"), netErr); return; }
         if (!obj.value(QStringLiteral("success")).toBool(false)) {
@@ -999,7 +1000,7 @@ void ApiClient::sendFile(const QString& receiverId, const QString& filePath, con
         m.id          = obj.value(QStringLiteral("message_id")).toString();
         m.senderId    = Session::instance().userId;
         m.content     = caption;
-        m.messageType = QStringLiteral("file");
+        m.messageType = messageType;
         m.filePath    = obj.value(QStringLiteral("file_path")).toString(filePath);
         m.fileName    = fileName;
         m.fileSize    = fileSize;
