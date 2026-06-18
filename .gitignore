@@ -2,3 +2,6 @@
 *.user
 CMakeCache.txt
 CMakeFiles/
+
+# WebRTC deps (собираются локально)
+/third_party/

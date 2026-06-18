@@ -23,6 +23,7 @@ set(SOURCES
     src/net/Session.cpp
     src/net/WsClient.cpp
     src/net/VoiceRecorder.cpp
+    src/net/CallEngine.cpp
     src/ui/BackgroundWidget.cpp
     src/ui/LoginPage.cpp
     src/ui/RegisterPage.cpp
@@ -81,6 +82,17 @@ target_link_libraries(Xipher PRIVATE
     Qt6::WebSockets
     Qt6::Multimedia
 )
+
+# ── WebRTC (libdatachannel, собран в third_party) для звонков ──────────────────
+set(LIBDC_DIR "${CMAKE_CURRENT_SOURCE_DIR}/third_party/libdatachannel")
+if(EXISTS "${LIBDC_DIR}/build/libdatachannel.dll.a")
+    target_include_directories(Xipher PRIVATE "${LIBDC_DIR}/include")
+    target_link_libraries(Xipher PRIVATE "${LIBDC_DIR}/build/libdatachannel.dll.a")
+    target_compile_definitions(Xipher PRIVATE XIPHER_HAVE_WEBRTC=1)
+    message(STATUS "Xipher: WebRTC (libdatachannel) подключён")
+else()
+    message(WARNING "Xipher: libdatachannel не собран — звонки будут отключены")
+endif()
 
 set_target_properties(Xipher PROPERTIES
     OUTPUT_NAME "Xipher"
