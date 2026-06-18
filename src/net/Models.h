@@ -15,6 +15,15 @@ struct IceServerCfg {
     QString credential;
 };
 
+// Активная сессия (/api/get-sessions → sessions[]).
+struct SessionInfo {
+    QString id;          // session_id
+    QString userAgent;   // "stealth" / browser UA
+    QString createdAt;
+    QString lastSeen;
+    bool    current = false;
+};
+
 // Элемент списка чатов (/api/chats → chats[]).
 struct Chat {
     QString id;            // user_id собеседника (или свой для «Избранных»)

@@ -68,6 +68,19 @@ public:
     void getCallIce(const QString& otherId);
     void checkIncomingCalls();
 
+    // Настройки: профиль, приватность, сеансы, email восстановления.
+    void getMyProfile();
+    void updateMyProfile(const QString& firstName, const QString& lastName, const QString& bio,
+                         int birthDay, int birthMonth, int birthYear);
+    void uploadAvatar(const QByteArray& bytes, const QString& fileName);
+    void updateMyPrivacy(const QJsonObject& fields);
+    void getSessions();
+    void revokeSession(const QString& sessionId);
+    void revokeSelectedSessions(const QStringList& ids);
+    void revokeOtherSessions();
+    void getRecoveryEmail();
+    void setRecoveryEmail(const QString& email);
+
     // Люди и друзья.
     void getUserProfile(const QString& userId);
     void setContactName(const QString& contactId, const QString& customName);
@@ -98,6 +111,15 @@ signals:
 
     void usersFound(const QString& query, const QList<UserHit>& users);
     void profileLoaded(const QJsonObject& profile);
+
+    // Настройки.
+    void profileUpdated(bool ok, const QString& message);
+    void avatarUploaded(bool ok, const QString& avatarUrl);
+    void privacyUpdated(bool ok);
+    void sessionsLoaded(const QList<SessionInfo>& sessions);
+    void sessionsChanged();
+    void recoveryEmailLoaded(const QString& email);
+    void recoveryEmailSaved(bool ok, const QString& message);
     void contactRenamed(const QString& contactId, const QString& newName, bool ok);
 
     void turnConfigReady(const QList<IceServerCfg>& iceServers);

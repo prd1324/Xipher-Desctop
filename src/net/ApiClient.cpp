@@ -9,6 +9,8 @@
 #include <QJsonArray>
 #include <QUrl>
 #include <QDebug>
+#include <QHttpMultiPart>
+#include <QHttpPart>
 
 ApiClient::ApiClient(QObject* parent)
     : QObject(parent), nam_(new QNetworkAccessManager(this)) {}
@@ -267,6 +269,136 @@ void ApiClient::getUserProfile(const QString& userId) {
              [this](const QJsonObject& obj, bool ok, const QString& netErr) {
         if (!ok && obj.isEmpty()) { emit chatError(QStringLiteral("profile"), netErr); return; }
         emit profileLoaded(obj);
+    });
+}
+
+// ── Настройки ───────────────────────────────────────────────────────────────
+
+void ApiClient::getMyProfile() { getUserProfile(Session::instance().userId); }
+
+void ApiClient::updateMyProfile(const QString& firstName, const QString& lastName,
+                                const QString& bio, int birthDay, int birthMonth, int birthYear) {
+    QJsonObject body{
+        {QStringLiteral("token"), Session::instance().token},
+        {QStringLiteral("first_name"), firstName},
+        {QStringLiteral("last_name"), lastName},
+        {QStringLiteral("bio"), bio},
+        {QStringLiteral("birth_day"), birthDay},
+        {QStringLiteral("birth_month"), birthMonth},
+        {QStringLiteral("birth_year"), birthYear}
+    };
+    postJson(QStringLiteral("/api/update-my-profile"), body,
+             [this](const QJsonObject& obj, bool ok, const QString& netErr) {
+        const bool success = ok && obj.value(QStringLiteral("success")).toBool(false);
+        emit profileUpdated(success, success ? QString()
+            : obj.value(QStringLiteral("message")).toString(netErr));
+    });
+}
+
+void ApiClient::uploadAvatar(const QByteArray& bytes, const QString& fileName) {
+    auto* multi = new QHttpMultiPart(QHttpMultiPart::FormDataType);
+
+    QHttpPart tokenPart;
+    tokenPart.setHeader(QNetworkRequest::ContentDispositionHeader,
+                        QStringLiteral("form-data; name=\"token\""));
+    tokenPart.setBody(Session::instance().token.toUtf8());
+    multi->append(tokenPart);
+
+    QHttpPart filePart;
+    QString ct = QStringLiteral("image/jpeg");
+    if (fileName.endsWith(QStringLiteral(".png"), Qt::CaseInsensitive)) ct = QStringLiteral("image/png");
+    else if (fileName.endsWith(QStringLiteral(".gif"), Qt::CaseInsensitive)) ct = QStringLiteral("image/gif");
+    filePart.setHeader(QNetworkRequest::ContentTypeHeader, ct);
+    filePart.setHeader(QNetworkRequest::ContentDispositionHeader,
+                       QStringLiteral("form-data; name=\"avatar\"; filename=\"%1\"").arg(fileName));
+    filePart.setBody(bytes);
+    multi->append(filePart);
+
+    QNetworkRequest req(QUrl(base_ + QStringLiteral("/api/upload_avatar")));
+    req.setRawHeader("Accept", "application/json");
+    req.setRawHeader("Authorization", QByteArray("Bearer ") + Session::instance().token.toUtf8());
+    req.setAttribute(QNetworkRequest::Http2AllowedAttribute, false);
+
+    QNetworkReply* reply = nam_->post(req, multi);
+    multi->setParent(reply);
+    QObject::connect(reply, &QNetworkReply::finished, this, [this, reply]() {
+        reply->deleteLater();
+        const QJsonObject o = QJsonDocument::fromJson(reply->readAll()).object();
+        const bool ok = o.value(QStringLiteral("success")).toBool(false);
+        QString url = o.value(QStringLiteral("avatar_url")).toString();
+        if (url.isEmpty()) url = o.value(QStringLiteral("data")).toObject()
+                                   .value(QStringLiteral("avatar_url")).toString();
+        emit avatarUploaded(ok, url);
+    });
+}
+
+void ApiClient::updateMyPrivacy(const QJsonObject& fields) {
+    QJsonObject body = fields;
+    body.insert(QStringLiteral("token"), Session::instance().token);
+    postJson(QStringLiteral("/api/update-my-privacy"), body,
+             [this](const QJsonObject& obj, bool ok, const QString&) {
+        emit privacyUpdated(ok && obj.value(QStringLiteral("success")).toBool(false));
+    });
+}
+
+void ApiClient::getSessions() {
+    postJson(QStringLiteral("/api/get-sessions"),
+             {{QStringLiteral("token"), Session::instance().token}},
+             [this](const QJsonObject& obj, bool, const QString&) {
+        QList<SessionInfo> list;
+        for (const QJsonValue& v : obj.value(QStringLiteral("sessions")).toArray()) {
+            const QJsonObject o = v.toObject();
+            SessionInfo s;
+            s.id        = o.value(QStringLiteral("session_id")).toString();
+            s.userAgent = o.value(QStringLiteral("user_agent")).toString();
+            s.createdAt = o.value(QStringLiteral("created_at")).toString();
+            s.lastSeen  = o.value(QStringLiteral("last_seen")).toString();
+            s.current   = o.value(QStringLiteral("is_current")).toBool(false);
+            list.append(s);
+        }
+        emit sessionsLoaded(list);
+    });
+}
+
+void ApiClient::revokeSession(const QString& sessionId) {
+    postJson(QStringLiteral("/api/revoke-session"),
+             {{QStringLiteral("token"), Session::instance().token},
+              {QStringLiteral("session_id"), sessionId}},
+             [this](const QJsonObject&, bool, const QString&) { emit sessionsChanged(); });
+}
+
+void ApiClient::revokeSelectedSessions(const QStringList& ids) {
+    QJsonArray arr;
+    for (const QString& id : ids) arr.append(id);
+    postJson(QStringLiteral("/api/revoke-selected-sessions"),
+             {{QStringLiteral("token"), Session::instance().token},
+              {QStringLiteral("session_ids"), QString::fromUtf8(QJsonDocument(arr).toJson(QJsonDocument::Compact))}},
+             [this](const QJsonObject&, bool, const QString&) { emit sessionsChanged(); });
+}
+
+void ApiClient::revokeOtherSessions() {
+    postJson(QStringLiteral("/api/revoke-other-sessions"),
+             {{QStringLiteral("token"), Session::instance().token}},
+             [this](const QJsonObject&, bool, const QString&) { emit sessionsChanged(); });
+}
+
+void ApiClient::getRecoveryEmail() {
+    postJson(QStringLiteral("/api/get-recovery-email"),
+             {{QStringLiteral("token"), Session::instance().token}},
+             [this](const QJsonObject& obj, bool, const QString&) {
+        const QJsonObject data = obj.value(QStringLiteral("data")).toObject();
+        emit recoveryEmailLoaded(data.value(QStringLiteral("recovery_email")).toString());
+    });
+}
+
+void ApiClient::setRecoveryEmail(const QString& email) {
+    postJson(QStringLiteral("/api/set-recovery-email"),
+             {{QStringLiteral("token"), Session::instance().token},
+              {QStringLiteral("email"), email}},
+             [this](const QJsonObject& obj, bool ok, const QString& netErr) {
+        const bool success = ok && obj.value(QStringLiteral("success")).toBool(false);
+        emit recoveryEmailSaved(success, success ? QString()
+            : obj.value(QStringLiteral("message")).toString(netErr));
     });
 }
 

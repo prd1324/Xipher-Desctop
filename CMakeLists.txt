@@ -41,6 +41,8 @@ set(SOURCES
     src/ui/EmptyChatGreeting.cpp
     src/ui/AnimatedEmojiLabel.cpp
     src/ui/ProfilePanel.cpp
+    src/ui/ToggleSwitch.cpp
+    src/ui/SettingsDialog.cpp
 )
 
 set(HEADERS

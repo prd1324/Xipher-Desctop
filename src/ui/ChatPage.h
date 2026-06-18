@@ -17,6 +17,7 @@ class EmojiPicker;
 class ChecklistWidget;
 class EmptyChatGreeting;
 class ProfilePanel;
+class SettingsDialog;
 class QNetworkAccessManager;
 class QListWidget;
 class QLineEdit;
@@ -50,6 +51,8 @@ public:
 
 private slots:
     void openNewChatDialog();
+    void openSettings();
+    void showMainMenu();
     void onChatsLoaded(const QList<Chat>& chats);
     void onMessagesLoaded(const QString& friendId, const QList<ChatMessage>& messages);
     void onMessageSent(const ChatMessage& msg, const QString& receiverId, const QString& tempId);
@@ -115,6 +118,8 @@ private:
     QLabel*      peerStatus_ = nullptr;
     QLabel*      peerAvatar_ = nullptr;
     ProfilePanel* profilePanel_ = nullptr;
+    SettingsDialog* settings_ = nullptr;
+    QPushButton* menuBtn_ = nullptr;
     QScrollArea* msgScroll_  = nullptr;
     QWidget*     msgContainer_ = nullptr;
     QVBoxLayout* msgLayout_  = nullptr;

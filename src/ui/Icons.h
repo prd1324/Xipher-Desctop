@@ -4,6 +4,11 @@
 #include <QPainter>
 #include <QPainterPath>
 #include <QColor>
+#include <cmath>
+
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  Icons — простые векторные line-иконки (QPainter), вместо эмодзи-глифов.
@@ -12,7 +17,9 @@
 namespace Icons {
 
 enum Kind { Send, Mic, Smile, Paperclip, Clock, Trash, File, Image,
-            Search, Pencil, Phone, Location, Checklist, Logout, Plus, More, Lock };
+            Search, Pencil, Phone, Location, Checklist, Logout, Plus, More, Lock,
+            Menu, Bell, Shield, User, Globe, Star, Device, Gear, Camera,
+            ChevronRight, ArrowLeft, Block };
 
 inline QPixmap pixmap(Kind kind, int size, const QColor& color) {
     const qreal dpr = 2.0;
@@ -169,6 +176,97 @@ inline QPixmap pixmap(Kind kind, int size, const QColor& color) {
         sh.arcTo(QRectF(8, 3.5, 8, 8), 180, -180);
         sh.lineTo(16, 10.5);
         p.drawPath(sh);
+        break;
+    }
+    case Menu: {
+        p.drawLine(QLineF(4, 6.5, 20, 6.5));
+        p.drawLine(QLineF(4, 12, 20, 12));
+        p.drawLine(QLineF(4, 17.5, 20, 17.5));
+        break;
+    }
+    case Bell: {
+        QPainterPath b;
+        b.moveTo(6, 17); b.lineTo(6, 11);
+        b.arcTo(QRectF(6, 4, 12, 12), 180, -180);
+        b.lineTo(18, 17); b.closeSubpath();
+        p.drawPath(b);
+        p.drawLine(QLineF(12, 3, 12, 4.5));
+        QPainterPath cl; cl.moveTo(10.3, 20); cl.arcTo(QRectF(10.3, 17.5, 3.4, 3.4), 180, 180);
+        p.drawPath(cl);
+        break;
+    }
+    case Shield: {
+        QPainterPath s;
+        s.moveTo(12, 3); s.lineTo(19, 6); s.lineTo(19, 12);
+        s.arcTo(QRectF(5, 6, 14, 15), 60, 60);
+        s.lineTo(5, 6); s.closeSubpath();
+        p.drawPath(s);
+        p.drawPolyline(QPolygonF({QPointF(9, 12), QPointF(11, 14), QPointF(15.5, 9.5)}));
+        break;
+    }
+    case User: {
+        p.drawEllipse(QPointF(12, 8.5), 4, 4);
+        QPainterPath bd;
+        bd.moveTo(4.5, 20); bd.arcTo(QRectF(4.5, 13, 15, 15), 180, -180);
+        p.drawPath(bd);
+        break;
+    }
+    case Globe: {
+        p.drawEllipse(QPointF(12, 12), 9, 9);
+        p.drawEllipse(QPointF(12, 12), 4, 9);
+        p.drawLine(QLineF(3, 12, 21, 12));
+        break;
+    }
+    case Star: {
+        QPainterPath st;
+        for (int i = 0; i < 5; ++i) {
+            const double ao = -90 + i * 144;
+            const double r = ao * M_PI / 180.0;
+            const QPointF pt(12 + 9 * std::cos(r), 12 + 9 * std::sin(r));
+            if (i == 0) st.moveTo(pt); else st.lineTo(pt);
+        }
+        st.closeSubpath();
+        p.setBrush(color); p.setPen(Qt::NoPen);
+        p.drawPath(st);
+        break;
+    }
+    case Device: {
+        p.drawRoundedRect(QRectF(3, 5, 13, 10), 1.8, 1.8);
+        p.drawLine(QLineF(7, 18, 12, 18));
+        p.drawRoundedRect(QRectF(17, 8, 4, 11), 1.4, 1.4);
+        break;
+    }
+    case Gear: {
+        p.drawEllipse(QPointF(12, 12), 3, 3);
+        for (int i = 0; i < 8; ++i) {
+            const double a = i * 45 * M_PI / 180.0;
+            const QPointF a1(12 + 6 * std::cos(a), 12 + 6 * std::sin(a));
+            const QPointF a2(12 + 8.5 * std::cos(a), 12 + 8.5 * std::sin(a));
+            p.drawLine(QLineF(a1, a2));
+        }
+        break;
+    }
+    case Camera: {
+        QPainterPath bd;
+        bd.moveTo(4, 8); bd.lineTo(8, 8); bd.lineTo(9.5, 6); bd.lineTo(14.5, 6);
+        bd.lineTo(16, 8); bd.lineTo(20, 8); bd.lineTo(20, 19); bd.lineTo(4, 19);
+        bd.closeSubpath();
+        p.drawPath(bd);
+        p.drawEllipse(QPointF(12, 13), 3.4, 3.4);
+        break;
+    }
+    case ChevronRight: {
+        p.drawPolyline(QPolygonF({QPointF(9.5, 5), QPointF(16, 12), QPointF(9.5, 19)}));
+        break;
+    }
+    case ArrowLeft: {
+        p.drawLine(QLineF(20, 12, 4, 12));
+        p.drawPolyline(QPolygonF({QPointF(10.5, 5.5), QPointF(4, 12), QPointF(10.5, 18.5)}));
+        break;
+    }
+    case Block: {
+        p.drawEllipse(QPointF(12, 12), 9, 9);
+        p.drawLine(QLineF(5.6, 5.6, 18.4, 18.4));
         break;
     }
     }

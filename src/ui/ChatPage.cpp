@@ -1,5 +1,6 @@
 #include "ui/ChatPage.h"
 #include "ui/NewChatDialog.h"
+#include "ui/SettingsDialog.h"
 #include "ui/VoiceMessageWidget.h"
 #include "ui/RecordingBar.h"
 #include "ui/EmojiPicker.h"
@@ -16,6 +17,7 @@
 #include "net/VoiceRecorder.h"
 
 #include <QMenu>
+#include <QAction>
 #include <QEvent>
 #include <QFileDialog>
 #include <QFileInfo>
@@ -351,21 +353,32 @@ QMenu::separator { height:1px; background:rgba(255,255,255,0.08); margin:4px 8px
     sideHeader->setObjectName(QStringLiteral("sideHeader"));
     sideHeader->setFixedHeight(60);
     auto* shl = new QHBoxLayout(sideHeader);
-    shl->setContentsMargins(16, 0, 12, 0);
+    shl->setContentsMargins(8, 0, 8, 0);
+    shl->setSpacing(4);
+    const QColor sideIcon(0xAC, 0xA6, 0xBD);
+
+    menuBtn_ = new QPushButton(sideHeader);
+    menuBtn_->setObjectName(QStringLiteral("hdrBtn"));
+    menuBtn_->setCursor(Qt::PointingHandCursor);
+    menuBtn_->setIcon(Icons::icon(Icons::Menu, 22, sideIcon));
+    menuBtn_->setIconSize(QSize(22, 22));
+    menuBtn_->setToolTip(QStringLiteral("Меню"));
+
     auto* brand = new QLabel(QStringLiteral("Xipher"), sideHeader);
     brand->setObjectName(QStringLiteral("brandTitle"));
-    auto* newChatBtn = new QPushButton(QStringLiteral(" Новый"), sideHeader);
-    newChatBtn->setObjectName(QStringLiteral("iconBtn"));
+
+    auto* newChatBtn = new QPushButton(sideHeader);
+    newChatBtn->setObjectName(QStringLiteral("hdrBtn"));
     newChatBtn->setCursor(Qt::PointingHandCursor);
-    newChatBtn->setIcon(Icons::icon(Icons::Pencil, 15, QColor(0xAC, 0xA6, 0xBD)));
-    newChatBtn->setIconSize(QSize(15, 15));
-    auto* logoutBtn = new QPushButton(QStringLiteral("Выйти"), sideHeader);
-    logoutBtn->setObjectName(QStringLiteral("iconBtn"));
-    logoutBtn->setCursor(Qt::PointingHandCursor);
+    newChatBtn->setIcon(Icons::icon(Icons::Pencil, 20, sideIcon));
+    newChatBtn->setIconSize(QSize(20, 20));
+    newChatBtn->setToolTip(QStringLiteral("Новый чат"));
+
+    shl->addWidget(menuBtn_);
+    shl->addSpacing(2);
     shl->addWidget(brand);
     shl->addStretch();
     shl->addWidget(newChatBtn);
-    shl->addWidget(logoutBtn);
 
     auto* searchWrap = new QWidget(sidebar);
     auto* swl = new QVBoxLayout(searchWrap);
@@ -584,7 +597,7 @@ QMenu::separator { height:1px; background:rgba(255,255,255,0.08); margin:4px 8px
     root->addWidget(convStack_, 1);
 
     connect(newChatBtn, &QPushButton::clicked, this, &ChatPage::openNewChatDialog);
-    connect(logoutBtn, &QPushButton::clicked, this, &ChatPage::logoutRequested);
+    connect(menuBtn_, &QPushButton::clicked, this, &ChatPage::showMainMenu);
     connect(chatList_, &QListWidget::itemClicked, this, &ChatPage::onChatClicked);
     connect(sendBtn_, &QPushButton::clicked, this, &ChatPage::onSendClicked);
     connect(composer_, &QLineEdit::returnPressed, this, &ChatPage::onSendClicked);
@@ -1189,6 +1202,35 @@ void ChatPage::onSearchChanged(const QString& text) {
         searchQuery_.clear();
         if (!searchHits_.isEmpty()) { searchHits_.clear(); rebuildChatList(); }
     }
+}
+
+void ChatPage::showMainMenu() {
+    QMenu menu(this);
+    QAction* settings = menu.addAction(Icons::icon(Icons::Gear, 18, QColor(0xF3,0xF1,0xF8)),
+                                       QStringLiteral("Настройки"));
+    QAction* saved = menu.addAction(Icons::icon(Icons::Checklist, 18, QColor(0xF3,0xF1,0xF8)),
+                                    QStringLiteral("Сохранённое"));
+    QAction* contacts = menu.addAction(Icons::icon(Icons::User, 18, QColor(0xF3,0xF1,0xF8)),
+                                       QStringLiteral("Контакты"));
+    menu.addSeparator();
+    QAction* logout = menu.addAction(Icons::icon(Icons::Logout, 18, QColor(0xE5,0x68,0x7A)),
+                                     QStringLiteral("Выйти"));
+
+    QAction* chosen = menu.exec(menuBtn_->mapToGlobal(QPoint(0, menuBtn_->height() + 6)));
+    if (chosen == settings) openSettings();
+    else if (chosen == saved) {
+        // Открыть «Избранное» (saved messages) — это чат с самим собой.
+        for (const Chat& c : chats_) if (c.isSaved) { openChat(c); return; }
+        openChatWith(Session::instance().userId, QStringLiteral("Избранное"), Session::instance().username);
+    }
+    else if (chosen == contacts) openNewChatDialog();
+    else if (chosen == logout) emit logoutRequested();
+}
+
+void ChatPage::openSettings() {
+    settings_ = new SettingsDialog(api_, window());
+    connect(settings_, &ModalOverlay::closed, this, [this]() { settings_ = nullptr; });
+    settings_->showAnimated();
 }
 
 void ChatPage::openNewChatDialog() {
