@@ -3,6 +3,7 @@
 #include "ui/SettingsDialog.h"
 #include "ui/GroupChannelDialogs.h"
 #include "ui/FolderDialog.h"
+#include "ui/ContactsPanel.h"
 #include "net/Prefs.h"
 #include "ui/VoiceMessageWidget.h"
 #include "ui/RecordingBar.h"
@@ -1416,14 +1417,14 @@ void ChatPage::openSettings() {
 }
 
 void ChatPage::openNewChatDialog() {
-    auto* dlg = new NewChatDialog(api_, this);
-    connect(dlg, &NewChatDialog::openChatRequested, this,
+    // Встроенная панель контактов (в стиле Telegram), а не отдельное окно.
+    auto* panel = new ContactsPanel(api_, window());
+    connect(panel, &ContactsPanel::openChatRequested, this,
             [this](const QString& id, const QString& displayName, const QString& username) {
         openChatWith(id, displayName, username);
     });
-    connect(dlg, &NewChatDialog::friendsChanged, this, [this]() { api_->getChats(); });
-    dlg->setAttribute(Qt::WA_DeleteOnClose);
-    dlg->exec();
+    connect(panel, &ContactsPanel::friendsChanged, this, [this]() { api_->getChats(); });
+    panel->showAnimated();
 }
 
 void ChatPage::openChatWith(const QString& userId, const QString& displayName, const QString& username) {

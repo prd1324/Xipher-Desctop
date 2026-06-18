@@ -661,6 +661,30 @@ void ApiClient::searchUsers(const QString& query) {
     });
 }
 
+void ApiClient::getFriends() {
+    postJson(QStringLiteral("/api/friends"), {{QStringLiteral("token"), Session::instance().token}},
+             [this](const QJsonObject& obj, bool, const QString&) {
+        QList<UserHit> list;
+        for (const QJsonValue& v : obj.value(QStringLiteral("friends")).toArray()) {
+            const QJsonObject o = v.toObject();
+            UserHit u;
+            u.id          = o.value(QStringLiteral("id")).toString();
+            u.username    = o.value(QStringLiteral("username")).toString();
+            const QString custom = o.value(QStringLiteral("custom_name")).toString();
+            u.displayName = !custom.isEmpty() ? custom
+                          : o.value(QStringLiteral("display_name")).toString();
+            if (u.displayName.isEmpty()) u.displayName = u.username;
+            u.avatarUrl   = o.value(QStringLiteral("avatar_url")).toString();
+            u.isPremium   = o.value(QStringLiteral("is_premium")).toBool(false);
+            u.online      = o.value(QStringLiteral("online")).toBool(false);
+            u.isBot       = o.value(QStringLiteral("is_bot")).toBool(false);
+            u.isFriend    = true;
+            list.append(u);
+        }
+        emit friendsLoaded(list);
+    });
+}
+
 void ApiClient::sendFriendRequest(const QString& username) {
     QJsonObject body{{QStringLiteral("token"), Session::instance().token},
                      {QStringLiteral("username"), username}};

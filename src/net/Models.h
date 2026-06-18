@@ -84,6 +84,9 @@ struct UserHit {
     QString displayName;
     QString avatarUrl;
     bool    isPremium = false;
+    bool    online = false;
+    bool    isBot = false;
+    bool    isFriend = false;
 };
 
 // Входящая заявка в друзья (/api/friend-requests → requests[]).

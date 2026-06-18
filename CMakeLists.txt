@@ -45,6 +45,7 @@ set(SOURCES
     src/ui/SettingsDialog.cpp
     src/ui/GroupChannelDialogs.cpp
     src/ui/FolderDialog.cpp
+    src/ui/ContactsPanel.cpp
 )
 
 set(HEADERS

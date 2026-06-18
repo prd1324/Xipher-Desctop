@@ -102,6 +102,7 @@ public:
     void getUserProfile(const QString& userId);
     void setContactName(const QString& contactId, const QString& customName);
     void searchUsers(const QString& query);
+    void getFriends();
     void sendFriendRequest(const QString& username);
     void getFriendRequests();
     void acceptFriend(const QString& requestId);
@@ -127,6 +128,7 @@ signals:
     void fileFetched(const QString& filePath, const QByteArray& bytes);
 
     void usersFound(const QString& query, const QList<UserHit>& users);
+    void friendsLoaded(const QList<UserHit>& friends);
     void profileLoaded(const QJsonObject& profile);
 
     // Группы/каналы/каталог.
