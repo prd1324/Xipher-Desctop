@@ -260,10 +260,15 @@ ChatPage::ChatPage(ApiClient* api, WsClient* ws, QWidget* parent)
     connect(api_, &ApiClient::messageSent,     this, &ChatPage::onMessageSent);
     connect(api_, &ApiClient::messageDeleted,  this, [this](bool ok){ if (ok) reloadCurrentMessages(); });
     connect(ws_,  &WsClient::newMessage,       this, &ChatPage::onWsMessage);
+    // Дебаунс перезагрузки истории группы/канала (не дёргаем API на каждый пакет).
+    peerReloadTimer_ = new QTimer(this);
+    peerReloadTimer_->setSingleShot(true);
+    peerReloadTimer_->setInterval(400);
+    connect(peerReloadTimer_, &QTimer::timeout, this, [this]() { reloadCurrentMessages(); });
     connect(ws_,  &WsClient::peerMessage, this, [this](const QString& chatId) {
         if (chatId == currentPeerId_ &&
             (currentKind_ == ChatKind::Group || currentKind_ == ChatKind::Channel))
-            reloadCurrentMessages();
+            peerReloadTimer_->start();
     });
     connect(api_, &ApiClient::voiceUploaded,   this, &ChatPage::onVoiceUploaded);
     connect(api_, &ApiClient::fileFetched,     this, &ChatPage::onFileFetched);
@@ -1020,6 +1025,7 @@ void ChatPage::clearMessages() {
     shownIds_.clear();
     checklistWidgets_.clear();
     mergedChecklists_.clear();
+    pendingImage_.clear();   // виджеты-картинки удалены — не держим устаревшие ключи
     bubbleCount_ = 0;
     updateGreeting();
 }

@@ -149,6 +149,7 @@ private:
     QWidget*      replyBar_     = nullptr;   // полоса «ответ на…» над вводом
     QLabel*       replyBarText_ = nullptr;
     QString       replyToId_, replyToName_, replyToText_;
+    QTimer*       peerReloadTimer_ = nullptr;
 
     // Файлы: отложенная отправка/открытие
     QString pendingFileReceiver_;

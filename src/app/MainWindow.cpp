@@ -77,13 +77,15 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     });
 
     // Системные уведомления (трей) о входящих сообщениях.
-    tray_ = new QSystemTrayIcon(this);
-    tray_->setIcon(windowIcon().isNull() ? style()->standardIcon(QStyle::SP_MessageBoxInformation)
-                                         : windowIcon());
-    tray_->setToolTip(QStringLiteral("Xipher"));
-    tray_->show();
+    if (QSystemTrayIcon::isSystemTrayAvailable()) {
+        tray_ = new QSystemTrayIcon(this);
+        tray_->setIcon(windowIcon().isNull() ? style()->standardIcon(QStyle::SP_MessageBoxInformation)
+                                             : windowIcon());
+        tray_->setToolTip(QStringLiteral("Xipher"));
+        tray_->show();
+    }
     connect(chat_, &ChatPage::notify, this, [this](const QString& title, const QString& body) {
-        if (!Prefs::getBool(QStringLiteral("xipher_notif_desktop"), true)) return;
+        if (!tray_ || !Prefs::getBool(QStringLiteral("xipher_notif_desktop"), true)) return;
         if (isActiveWindow()) return;   // окно в фокусе — не отвлекаем
         tray_->showMessage(title, body, QSystemTrayIcon::NoIcon, 5000);
     });
