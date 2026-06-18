@@ -8,6 +8,7 @@
 #include <QWidget>
 #include <QTimer>
 #include <QDateTime>
+#include <QDebug>
 
 CallController::CallController(ApiClient* api, WsClient* ws, QWidget* window, QObject* parent)
     : QObject(parent), api_(api), ws_(ws), window_(window) {
@@ -27,6 +28,7 @@ CallController::CallController(ApiClient* api, WsClient* ws, QWidget* window, QO
 
     // ICE-серверы пришли → запускаем отложенное действие.
     connect(api_, &ApiClient::turnConfigReady, this, [this](const QStringList& servers) {
+        qInfo() << "[call] turn-config servers:" << servers;
         if (onIce_) { auto fn = onIce_; onIce_ = nullptr; fn(servers); }
     });
 
@@ -73,6 +75,7 @@ void CallController::startOutgoing(const QString& peerId, const QString& peerNam
     overlay_->show();
     overlay_->raise();
 
+    qInfo() << "[call] outgoing to" << peerId_;
     engine_ = createEngine();
     api_->callNotify(peerId_, QStringLiteral("audio"));
     onIce_ = [this](const QStringList& servers) {
@@ -85,6 +88,7 @@ void CallController::startOutgoing(const QString& peerId, const QString& peerNam
 void CallController::onIncoming(const QString& callerId, const QString& callerName, const QString&) {
     if (callerId.isEmpty() || peerId_ == callerId) return;
     if (busy()) { api_->callEnd(callerId); return; }
+    qInfo() << "[call] incoming from" << callerId << callerName;
 
     peerId_ = callerId; peerName_ = callerName.isEmpty() ? callerId : callerName; caller_ = false;
     answerApplied_ = false; offerFetched_ = false; addedCandidates_.clear();
@@ -114,6 +118,7 @@ void CallController::acceptIncoming() {
 
 void CallController::applyOffer(const QString& callerId, const QString& sdp) {
     if (caller_ || engine_ || callerId != peerId_ || sdp.isEmpty()) return;
+    qInfo() << "[call] got remote offer, len" << sdp.size();
     offerFetched_ = true;
     engine_ = createEngine();
     onIce_ = [this, sdp](const QStringList& servers) {
@@ -124,6 +129,7 @@ void CallController::applyOffer(const QString& callerId, const QString& sdp) {
 
 void CallController::applyAnswer(const QString& calleeId, const QString& sdp) {
     if (!engine_ || answerApplied_ || calleeId != peerId_ || sdp.isEmpty()) return;
+    qInfo() << "[call] got remote answer, len" << sdp.size();
     answerApplied_ = true;
     engine_->setRemoteAnswer(sdp);
 }

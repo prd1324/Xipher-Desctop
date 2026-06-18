@@ -1,12 +1,31 @@
 #include <QApplication>
 #include <QFont>
 #include <QPalette>
+#include <QFile>
+#include <QTextStream>
+#include <QDir>
+#include <QDateTime>
+#include <QMutex>
 
 #include "app/MainWindow.h"
 #include "ui/Theme.h"
 
+// Лог в файл рядом с exe (xipher.log) — GUI-приложение не имеет консоли,
+// поэтому диагностика (в т.ч. звонки [call] …) пишется сюда.
+static void logToFile(QtMsgType type, const QMessageLogContext&, const QString& msg) {
+    static QMutex mutex;
+    QMutexLocker lock(&mutex);
+    QFile f(QCoreApplication::applicationDirPath() + QStringLiteral("/xipher.log"));
+    if (f.open(QIODevice::Append | QIODevice::Text)) {
+        const char* lvl = type == QtWarningMsg ? "WARN" : type == QtCriticalMsg ? "ERR " : "INFO";
+        QTextStream(&f) << QDateTime::currentDateTime().toString(QStringLiteral("HH:mm:ss.zzz"))
+                        << ' ' << lvl << ' ' << msg << '\n';
+    }
+}
+
 int main(int argc, char** argv) {
     QApplication app(argc, argv);
+    qInstallMessageHandler(logToFile);
 
     // Имена для QSettings (HKCU\Software\Xipher\Desktop).
     QApplication::setOrganizationName(QStringLiteral("Xipher"));

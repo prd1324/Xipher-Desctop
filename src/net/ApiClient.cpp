@@ -18,6 +18,9 @@ void ApiClient::postJson(const QString& path,
     QNetworkRequest req(QUrl(base_ + path));
     req.setHeader(QNetworkRequest::ContentTypeHeader, QStringLiteral("application/json"));
     req.setRawHeader("Accept", "application/json");
+    // HTTP/2 у прода режет параллельные стримы ("Server refused a stream") —
+    // форсируем HTTP/1.1, иначе поллинг/сигналинг периодически падает.
+    req.setAttribute(QNetworkRequest::Http2AllowedAttribute, false);
 
     const QByteArray payload = QJsonDocument(body).toJson(QJsonDocument::Compact);
     QNetworkReply* reply = nam_->post(req, payload);
@@ -439,6 +442,7 @@ void ApiClient::sendFile(const QString& receiverId, const QString& filePath, con
 void ApiClient::fetchFile(const QString& filePath) {
     QNetworkRequest req(QUrl(base_ + filePath));
     req.setRawHeader("Authorization", "Bearer " + Session::instance().token.toUtf8());
+    req.setAttribute(QNetworkRequest::Http2AllowedAttribute, false);
     QNetworkReply* reply = nam_->get(req);
     QObject::connect(reply, &QNetworkReply::finished, this, [this, reply, filePath]() {
         reply->deleteLater();
