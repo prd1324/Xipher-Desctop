@@ -48,6 +48,7 @@ set(SOURCES
     src/ui/ContactsPanel.cpp
     src/ui/PeerInfoPanel.cpp
     src/ui/ChatPickerDialog.cpp
+    src/ui/ImageViewer.cpp
 )
 
 set(HEADERS

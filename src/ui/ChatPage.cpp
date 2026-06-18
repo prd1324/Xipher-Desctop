@@ -6,6 +6,7 @@
 #include "ui/ContactsPanel.h"
 #include "ui/PeerInfoPanel.h"
 #include "ui/ChatPickerDialog.h"
+#include "ui/ImageViewer.h"
 #include "net/Prefs.h"
 #include "ui/VoiceMessageWidget.h"
 #include "ui/RecordingBar.h"
@@ -1007,6 +1008,17 @@ bool ChatPage::eventFilter(QObject* obj, QEvent* e) {
     if (greeting_ && obj == msgScroll_->viewport() && e->type() == QEvent::Resize) {
         if (greeting_->isVisible()) greeting_->setGeometry(msgScroll_->viewport()->rect());
     }
+    // Клик по картинке-сообщению → просмотр на весь экран.
+    if (e->type() == QEvent::MouseButtonRelease) {
+        if (auto* w = qobject_cast<QWidget*>(obj)) {
+            const QVariant fv = w->property("imgFull");
+            if (fv.isValid() && fv.canConvert<QPixmap>()) {
+                ImageViewer::show(window(), fv.value<QPixmap>());
+                return true;
+            }
+        }
+    }
+
     // Клик по шапке диалога → профиль / инфо канала-группы.
     if (obj == peerHeader_ && e->type() == QEvent::MouseButtonRelease && !currentPeerId_.isEmpty()) {
         if (currentKind_ == ChatKind::Group || currentKind_ == ChatKind::Channel) {
@@ -1210,6 +1222,8 @@ void ChatPage::addBubble(const ChatMessage& msg) {
         img->setMinimumSize(180, 120);
         img->setStyleSheet(QStringLiteral("background:rgba(255,255,255,0.05);border-radius:10px;color:#ACA6BD;"));
         img->setText(QStringLiteral("Фото…"));
+        img->setCursor(Qt::PointingHandCursor);
+        img->installEventFilter(this);   // клик → просмотр на весь экран
         bubble->setMinimumWidth(220);
         bl->addWidget(img);
         const QString path = msg.filePath;
@@ -1217,6 +1231,7 @@ void ChatPage::addBubble(const ChatMessage& msg) {
             if (!path.startsWith(QStringLiteral("/files"))) {
                 QPixmap pm(path);
                 if (!pm.isNull()) {
+                    img->setProperty("imgFull", pm);
                     img->setPixmap(pm.scaled(280, 360, Qt::KeepAspectRatio, Qt::SmoothTransformation));
                     img->setText(QString());
                 }
@@ -1962,6 +1977,7 @@ void ChatPage::onFileFetched(const QString& filePath, const QByteArray& bytes) {
         QPointer<QLabel> lbl = pendingImage_.take(filePath);
         QPixmap pm;
         if (lbl && pm.loadFromData(bytes)) {
+            lbl->setProperty("imgFull", pm);
             lbl->setPixmap(pm.scaled(280, 360, Qt::KeepAspectRatio, Qt::SmoothTransformation));
             lbl->setText(QString());
             lbl->setMinimumSize(0, 0);
