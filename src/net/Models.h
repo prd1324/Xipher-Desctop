@@ -77,6 +77,20 @@ inline QString chatKeyFor(const Chat& c) {
     return t + QStringLiteral(":") + c.id;
 }
 
+// Тема форума группы (/api/get-group-topics → topics[]).
+struct Topic {
+    QString id;
+    QString name;
+    QString iconEmoji;
+    QString iconColor;
+    bool    isGeneral = false;
+    bool    isClosed = false;
+    int     pinnedOrder = 0;
+    QString lastMessage;
+    QString lastSender;
+    int     unread = 0;
+};
+
 // Участник группы/канала (/api/get-group-members, /api/get-channel-members).
 struct Member {
     QString id;        // user_id

@@ -99,6 +99,21 @@ public:
     void kickGroupMember(const QString& groupId, const QString& userId);
     void setGroupMemberRole(const QString& groupId, const QString& userId, const QString& role);
     void banChannelMember(const QString& channelId, const QString& userId, bool banned);
+    void muteGroupMember(const QString& groupId, const QString& userId, bool muted);
+    void setGroupPermission(const QString& groupId, const QString& permission, bool enabled);
+    void pinMessage(const QString& messageId, ChatKind kind, const QString& peerId, bool pin);
+
+    // Форум-топики (группы).
+    void getGroupTopics(const QString& groupId);
+    void setGroupForumMode(const QString& groupId, bool enabled);
+    void createGroupTopic(const QString& groupId, const QString& name,
+                          const QString& emoji, const QString& color);
+    void updateGroupTopic(const QString& topicId, const QString& name,
+                          const QString& emoji, const QString& color, int closed /*-1 noop,0,1*/);
+    void deleteGroupTopic(const QString& topicId);
+    void getTopicMessages(const QString& topicId);
+    void sendTopicMessage(const QString& topicId, const QString& content, const QString& tempId,
+                          const QString& replyTo = QString());
 
     // Папки чатов (синхронизация с сервером).
     void getChatFolders();
@@ -172,6 +187,9 @@ signals:
     void membersLoaded(const QString& peerId, const QList<Member>& members);
     void peerActionDone(bool ok, const QString& message);
     void inviteLinkReady(const QString& url);
+    void topicsLoaded(const QString& groupId, bool forumMode, const QList<Topic>& topics);
+    void topicActionDone(bool ok, const QString& message);
+    void topicMessagesLoaded(const QString& topicId, const QList<ChatMessage>& messages);
 
     // Настройки.
     void profileUpdated(bool ok, const QString& message);

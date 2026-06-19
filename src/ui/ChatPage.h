@@ -97,6 +97,9 @@ private:
     void rebuildFolderStrip();
     void setActiveFolder(const QString& id);
     void openFolderEditor(const QString& folderId);   // пустой id = новая папка
+    void showTopicsList(const QList<Topic>& topics);
+    void openTopic(const Topic& topic);
+    void createTopicDialog();
     int  indexOfChat(const QString& id) const;
     void openChat(const Chat& chat);
     void addBubble(const ChatMessage& msg);
@@ -182,6 +185,12 @@ private:
     QList<Chat> groupChats_;       // /api/get-groups
     QList<Chat> channelChats_;     // /api/get-channels
     ChatKind    currentKind_ = ChatKind::User;   // тип открытого чата
+    bool        currentForum_ = false;           // открытая группа в режиме форума
+    QString     currentTopicId_;                 // открытая тема (пусто = не в теме)
+    QPushButton* topicBackBtn_ = nullptr;
+    QLabel*      topicsTitle_  = nullptr;
+    QVBoxLayout* topicsBox_    = nullptr;
+    QList<Topic> currentTopics_;
     QList<Folder> folders_;        // папки (синхр. с сервером)
     QString       activeFolderId_ = QStringLiteral("all");
     QWidget*      folderStrip_ = nullptr;

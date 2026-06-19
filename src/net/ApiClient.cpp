@@ -623,6 +623,125 @@ void ApiClient::banChannelMember(const QString& channelId, const QString& userId
     });
 }
 
+void ApiClient::muteGroupMember(const QString& groupId, const QString& userId, bool muted) {
+    postJson(QStringLiteral("/api/mute-member"),
+             {{QStringLiteral("token"), Session::instance().token},
+              {QStringLiteral("group_id"), groupId}, {QStringLiteral("target_user_id"), userId},
+              {QStringLiteral("muted"), muted ? QStringLiteral("true") : QStringLiteral("false")}},
+             [this](const QJsonObject& o, bool ok, const QString& e) {
+        emit peerActionDone(ok && o.value(QStringLiteral("success")).toBool(false), e);
+    });
+}
+
+void ApiClient::setGroupPermission(const QString& groupId, const QString& permission, bool enabled) {
+    postJson(QStringLiteral("/api/update-group-permissions"),
+             {{QStringLiteral("token"), Session::instance().token},
+              {QStringLiteral("group_id"), groupId}, {QStringLiteral("permission"), permission},
+              {QStringLiteral("enabled"), enabled ? QStringLiteral("true") : QStringLiteral("false")}},
+             [this](const QJsonObject& o, bool ok, const QString& e) {
+        emit peerActionDone(ok && o.value(QStringLiteral("success")).toBool(false), e);
+    });
+}
+
+void ApiClient::pinMessage(const QString& messageId, ChatKind kind, const QString& peerId, bool pin) {
+    QJsonObject body{{QStringLiteral("token"), Session::instance().token},
+                     {QStringLiteral("message_id"), messageId}};
+    if (kind == ChatKind::Group)        body.insert(QStringLiteral("group_id"), peerId);
+    else if (kind == ChatKind::Channel) body.insert(QStringLiteral("channel_id"), peerId);
+    postJson(pin ? QStringLiteral("/api/pin-message") : QStringLiteral("/api/unpin-message"), body,
+             [this](const QJsonObject& o, bool ok, const QString& e) {
+        emit peerActionDone(ok && o.value(QStringLiteral("success")).toBool(false), e);
+    });
+}
+
+// ── Форум-топики ──────────────────────────────────────────────────────────────
+void ApiClient::getGroupTopics(const QString& groupId) {
+    postJson(QStringLiteral("/api/get-group-topics"),
+             {{QStringLiteral("token"), Session::instance().token}, {QStringLiteral("group_id"), groupId}},
+             [this, groupId](const QJsonObject& obj, bool, const QString&) {
+        QList<Topic> list;
+        for (const QJsonValue& v : obj.value(QStringLiteral("topics")).toArray()) {
+            const QJsonObject o = v.toObject();
+            Topic t;
+            t.id          = o.value(QStringLiteral("id")).toString();
+            t.name        = o.value(QStringLiteral("name")).toString();
+            t.iconEmoji   = o.value(QStringLiteral("icon_emoji")).toString();
+            t.iconColor   = o.value(QStringLiteral("icon_color")).toString();
+            t.isGeneral   = o.value(QStringLiteral("is_general")).toBool(false);
+            t.isClosed    = o.value(QStringLiteral("is_closed")).toBool(false);
+            t.pinnedOrder = o.value(QStringLiteral("pinned_order")).toInt();
+            t.lastMessage = o.value(QStringLiteral("last_message")).toString();
+            t.lastSender  = o.value(QStringLiteral("last_message_sender")).toString();
+            t.unread      = o.value(QStringLiteral("unread_count")).toInt();
+            list.append(t);
+        }
+        emit topicsLoaded(groupId, obj.value(QStringLiteral("forum_mode")).toBool(false), list);
+    });
+}
+
+void ApiClient::setGroupForumMode(const QString& groupId, bool enabled) {
+    postJson(QStringLiteral("/api/set-group-forum-mode"),
+             {{QStringLiteral("token"), Session::instance().token}, {QStringLiteral("group_id"), groupId},
+              {QStringLiteral("enabled"), enabled ? QStringLiteral("true") : QStringLiteral("false")}},
+             [this](const QJsonObject& o, bool ok, const QString& e) {
+        emit topicActionDone(ok && o.value(QStringLiteral("success")).toBool(false), e);
+    });
+}
+
+void ApiClient::createGroupTopic(const QString& groupId, const QString& name,
+                                 const QString& emoji, const QString& color) {
+    postJson(QStringLiteral("/api/create-group-topic"),
+             {{QStringLiteral("token"), Session::instance().token}, {QStringLiteral("group_id"), groupId},
+              {QStringLiteral("name"), name}, {QStringLiteral("icon_emoji"), emoji},
+              {QStringLiteral("icon_color"), color}},
+             [this](const QJsonObject& o, bool ok, const QString& e) {
+        emit topicActionDone(ok && o.value(QStringLiteral("success")).toBool(false),
+                             o.value(QStringLiteral("error")).toString(e));
+    });
+}
+
+void ApiClient::updateGroupTopic(const QString& topicId, const QString& name,
+                                 const QString& emoji, const QString& color, int closed) {
+    QJsonObject body{{QStringLiteral("token"), Session::instance().token},
+                     {QStringLiteral("topic_id"), topicId}};
+    if (!name.isEmpty())  body.insert(QStringLiteral("name"), name);
+    if (!emoji.isEmpty()) body.insert(QStringLiteral("icon_emoji"), emoji);
+    if (!color.isEmpty()) body.insert(QStringLiteral("icon_color"), color);
+    if (closed >= 0) body.insert(QStringLiteral("is_closed"), closed ? QStringLiteral("true") : QStringLiteral("false"));
+    postJson(QStringLiteral("/api/update-group-topic"), body,
+             [this](const QJsonObject& o, bool ok, const QString& e) {
+        emit topicActionDone(ok && o.value(QStringLiteral("success")).toBool(false), e);
+    });
+}
+
+void ApiClient::deleteGroupTopic(const QString& topicId) {
+    postJson(QStringLiteral("/api/delete-group-topic"),
+             {{QStringLiteral("token"), Session::instance().token}, {QStringLiteral("topic_id"), topicId}},
+             [this](const QJsonObject& o, bool ok, const QString& e) {
+        emit topicActionDone(ok && o.value(QStringLiteral("success")).toBool(false), e);
+    });
+}
+
+void ApiClient::getTopicMessages(const QString& topicId) {
+    postJson(QStringLiteral("/api/get-topic-messages"),
+             {{QStringLiteral("token"), Session::instance().token},
+              {QStringLiteral("topic_id"), topicId}, {QStringLiteral("limit"), 100}},
+             [this, topicId](const QJsonObject& obj, bool, const QString&) {
+        emit topicMessagesLoaded(topicId, parseGroupChannelMessages(obj));
+    });
+}
+
+void ApiClient::sendTopicMessage(const QString& topicId, const QString& content, const QString& tempId,
+                                 const QString& replyTo) {
+    QJsonObject body{{QStringLiteral("token"), Session::instance().token},
+                     {QStringLiteral("topic_id"), topicId},
+                     {QStringLiteral("content"), content},
+                     {QStringLiteral("message_type"), QStringLiteral("text")},
+                     {QStringLiteral("temp_id"), tempId}};
+    if (!replyTo.isEmpty()) body.insert(QStringLiteral("reply_to_message_id"), replyTo);
+    postJson(QStringLiteral("/api/send-topic-message"), body, [](const QJsonObject&, bool, const QString&) {});
+}
+
 void ApiClient::getChatFolders() {
     postJson(QStringLiteral("/api/get-chat-folders"), {{QStringLiteral("token"), Session::instance().token}},
              [this](const QJsonObject& obj, bool, const QString&) {

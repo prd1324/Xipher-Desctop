@@ -249,6 +249,24 @@ ChatPage::ChatPage(ApiClient* api, WsClient* ws, QWidget* parent)
     connect(api_, &ApiClient::channelsLoaded, this, [this](const QList<Chat>& c){ channelChats_ = c; mergeAllChats(); });
     connect(api_, &ApiClient::groupMessagesLoaded, this, &ChatPage::onMessagesLoaded);
     connect(api_, &ApiClient::channelMessagesLoaded, this, &ChatPage::onMessagesLoaded);
+    connect(api_, &ApiClient::topicsLoaded, this, [this](const QString& gid, bool forum, const QList<Topic>& topics) {
+        if (gid != currentPeerId_ || currentKind_ != ChatKind::Group) return;
+        currentForum_ = forum;
+        if (forum && currentTopicId_.isEmpty()) {
+            showTopicsList(topics);
+        } else if (!forum) {
+            convStack_->setCurrentIndex(1); clearMessages(); api_->getGroupMessages(gid);
+        }
+    });
+    connect(api_, &ApiClient::topicMessagesLoaded, this, [this](const QString& tid, const QList<ChatMessage>& msgs) {
+        if (tid != currentTopicId_) return;
+        onMessagesLoaded(currentPeerId_, msgs);   // переиспользуем рендер
+    });
+    connect(api_, &ApiClient::topicActionDone, this, [this](bool ok, const QString& m) {
+        if (!ok && !m.isEmpty()) return;
+        if (currentKind_ == ChatKind::Group && currentTopicId_.isEmpty())
+            api_->getGroupTopics(currentPeerId_);   // обновить список тем
+    });
     connect(api_, &ApiClient::foldersLoaded, this, [this](const QList<Folder>& f) {
         folders_ = f;
         const QString saved = Prefs::getStr(QStringLiteral("xipher_active_folder"), QStringLiteral("all"));
@@ -492,6 +510,20 @@ QMenu::separator { height:1px; background:rgba(255,255,255,0.08); margin:4px 8px
     chl->setContentsMargins(8, 0, 16, 0);
     chl->setSpacing(0);
 
+    // Кнопка «назад к темам» (видна только внутри темы форума).
+    topicBackBtn_ = new QPushButton(convHeader);
+    topicBackBtn_->setObjectName(QStringLiteral("hdrBtn"));
+    topicBackBtn_->setCursor(Qt::PointingHandCursor);
+    topicBackBtn_->setIcon(Icons::icon(Icons::ArrowLeft, 20, QColor(0xAC,0xA6,0xBD)));
+    topicBackBtn_->setIconSize(QSize(20, 20));
+    topicBackBtn_->setToolTip(QStringLiteral("К темам"));
+    topicBackBtn_->setVisible(false);
+    connect(topicBackBtn_, &QPushButton::clicked, this, [this]() {
+        currentTopicId_.clear();
+        api_->getGroupTopics(currentPeerId_);   // вернуться к списку тем
+    });
+    chl->addWidget(topicBackBtn_);
+
     // Кликабельный кластер (аватар + имя/статус) → открывает профиль (как в TG).
     peerHeader_ = new QWidget(convHeader);
     peerHeader_->setObjectName(QStringLiteral("peerHeader"));
@@ -680,8 +712,49 @@ QMenu::separator { height:1px; background:rgba(255,255,255,0.08); margin:4px 8px
     cvl->addWidget(msgScroll_, 1);
     cvl->addWidget(composerBar);
 
-    convStack_->addWidget(empty);   // 0
-    convStack_->addWidget(conv);    // 1
+    // ── Страница списка тем форума (index 2) ────────────────────────────────────
+    auto* topicsPage = new QWidget(convStack_);
+    topicsPage->setStyleSheet(QStringLiteral("background:#0B0A0E;"));
+    auto* tpl = new QVBoxLayout(topicsPage);
+    tpl->setContentsMargins(0, 0, 0, 0);
+    tpl->setSpacing(0);
+    auto* tHead = new QWidget(topicsPage);
+    tHead->setObjectName(QStringLiteral("convHeader"));
+    tHead->setFixedHeight(60);
+    auto* thl = new QHBoxLayout(tHead);
+    thl->setContentsMargins(16, 0, 12, 0);
+    topicsTitle_ = new QLabel(QStringLiteral("Темы"), tHead);
+    topicsTitle_->setObjectName(QStringLiteral("peerName"));
+    topicsTitle_->setCursor(Qt::PointingHandCursor);
+    topicsTitle_->installEventFilter(this);
+    topicsTitle_->setProperty("openPeerInfo", true);
+    auto* newTopicBtn = new QPushButton(tHead);
+    newTopicBtn->setObjectName(QStringLiteral("hdrBtn"));
+    newTopicBtn->setCursor(Qt::PointingHandCursor);
+    newTopicBtn->setIcon(Icons::icon(Icons::Plus, 20, QColor(0xAC,0xA6,0xBD)));
+    newTopicBtn->setIconSize(QSize(20, 20));
+    newTopicBtn->setToolTip(QStringLiteral("Новая тема"));
+    connect(newTopicBtn, &QPushButton::clicked, this, &ChatPage::createTopicDialog);
+    thl->addWidget(topicsTitle_);
+    thl->addStretch();
+    thl->addWidget(newTopicBtn);
+    tpl->addWidget(tHead);
+    auto* tScroll = new QScrollArea(topicsPage);
+    tScroll->setObjectName(QStringLiteral("chatList"));
+    tScroll->setWidgetResizable(true);
+    tScroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    tScroll->setFrameShape(QFrame::NoFrame);
+    auto* tListW = new QWidget();
+    topicsBox_ = new QVBoxLayout(tListW);
+    topicsBox_->setContentsMargins(8, 8, 8, 8);
+    topicsBox_->setSpacing(4);
+    topicsBox_->addStretch();
+    tScroll->setWidget(tListW);
+    tpl->addWidget(tScroll, 1);
+
+    convStack_->addWidget(empty);       // 0
+    convStack_->addWidget(conv);        // 1
+    convStack_->addWidget(topicsPage);  // 2
     convStack_->setCurrentIndex(0);
 
     root->addWidget(sidebar);
@@ -847,6 +920,114 @@ void ChatPage::openFolderEditor(const QString& folderId) {
     dlg->showAnimated();
 }
 
+// ── Форум-темы ────────────────────────────────────────────────────────────────
+void ChatPage::showTopicsList(const QList<Topic>& topics) {
+    currentTopics_ = topics;
+    currentTopicId_.clear();
+    if (topicBackBtn_) topicBackBtn_->setVisible(false);
+    if (topicsTitle_) topicsTitle_->setText(currentPeerName_);
+    convStack_->setCurrentIndex(2);
+
+    while (topicsBox_->count() > 1) {
+        QLayoutItem* it = topicsBox_->takeAt(0);
+        if (it->widget()) it->widget()->deleteLater();
+        delete it;
+    }
+    if (topics.isEmpty()) {
+        auto* e = new QLabel(QStringLiteral("Тем пока нет. Создайте первую кнопкой +"));
+        e->setStyleSheet(QStringLiteral("color:#726C82;font-size:13px;padding:16px;"));
+        e->setWordWrap(true);
+        topicsBox_->insertWidget(0, e);
+        return;
+    }
+    int row = 0;
+    for (const Topic& t : topics) {
+        auto* w = new QFrame();
+        w->setObjectName(QStringLiteral("topicRow"));
+        w->setStyleSheet(QStringLiteral("#topicRow{background:#131218;border-radius:12px;}"
+                                        "#topicRow:hover{background:#1A1822;}"));
+        w->setCursor(Qt::PointingHandCursor);
+        w->setProperty("topicIdx", row);
+        w->installEventFilter(this);
+        auto* h = new QHBoxLayout(w);
+        h->setContentsMargins(12, 10, 12, 10);
+        h->setSpacing(12);
+        // Цветной кружок с эмодзи темы.
+        auto* chip = new QLabel(t.iconEmoji.isEmpty() ? QStringLiteral("#") : t.iconEmoji);
+        chip->setFixedSize(40, 40);
+        chip->setAlignment(Qt::AlignCenter);
+        const QString col = t.iconColor.isEmpty() ? QStringLiteral("#8B5CF6") : t.iconColor;
+        chip->setStyleSheet(QStringLiteral("background:%1;border-radius:20px;font-size:18px;color:#fff;").arg(col));
+        h->addWidget(chip);
+        auto* col2 = new QVBoxLayout(); col2->setSpacing(2);
+        QString nm = t.name;
+        if (t.isClosed) nm += QStringLiteral("  🔒");
+        if (t.pinnedOrder > 0) nm = QStringLiteral("📌 ") + nm;
+        auto* nmL = new QLabel(nm); nmL->setStyleSheet(QStringLiteral("color:#F3F1F8;font-size:14px;font-weight:600;"));
+        col2->addWidget(nmL);
+        if (!t.lastMessage.isEmpty()) {
+            auto* lm = new QLabel((t.lastSender.isEmpty() ? QString() : t.lastSender + QStringLiteral(": ")) + t.lastMessage);
+            lm->setStyleSheet(QStringLiteral("color:#ACA6BD;font-size:12px;"));
+            col2->addWidget(lm);
+        }
+        h->addLayout(col2, 1);
+        if (t.unread > 0) {
+            auto* b = new QLabel(QString::number(t.unread));
+            b->setAlignment(Qt::AlignCenter);
+            b->setStyleSheet(QStringLiteral("background:#8B5CF6;color:#fff;font-size:11px;font-weight:700;"
+                "border-radius:9px;min-width:18px;min-height:18px;padding:0 5px;"));
+            h->addWidget(b);
+        }
+        topicsBox_->insertWidget(row++, w);
+    }
+}
+
+void ChatPage::openTopic(const Topic& topic) {
+    currentTopicId_ = topic.id;
+    if (topicBackBtn_) topicBackBtn_->setVisible(true);
+    peerName_->setText(topic.name);
+    peerStatus_->setText(QStringLiteral("тема • %1").arg(currentPeerName_));
+    convStack_->setCurrentIndex(1);
+    clearMessages();
+    api_->getTopicMessages(topic.id);
+}
+
+void ChatPage::createTopicDialog() {
+    if (currentPeerId_.isEmpty()) return;
+    auto* ov = new ModalOverlay(window(), 380);
+    ov->card()->setStyleSheet(QStringLiteral(
+        "#modalCard{background:#17151E;border:1px solid rgba(255,255,255,0.08);border-radius:16px;}"
+        "QLabel{color:#F3F1F8;} QLineEdit{background:#131218;border:1px solid rgba(255,255,255,0.10);"
+        "border-radius:10px;min-height:38px;padding:0 12px;color:#F3F1F8;}"
+        "QLineEdit:focus{border:1px solid #8B5CF6;}"
+        "#primaryBtn{background:qlineargradient(x1:0,y1:0,x2:1,y2:1,stop:0 #8B5CF6,stop:1 #6D28D9);"
+        "color:#fff;border:none;border-radius:10px;min-height:38px;padding:0 20px;font-weight:700;}"));
+    auto* t = new QLabel(QStringLiteral("Новая тема"), ov->card());
+    t->setStyleSheet(QStringLiteral("font-size:17px;font-weight:800;"));
+    ov->cardLayout()->addWidget(t);
+    auto* nameEd = new QLineEdit(ov->card());
+    nameEd->setPlaceholderText(QStringLiteral("Название темы"));
+    ov->cardLayout()->addWidget(nameEd);
+    auto* row = new QWidget(ov->card());
+    auto* rh = new QHBoxLayout(row); rh->setContentsMargins(0,0,0,0);
+    auto* create = new QPushButton(QStringLiteral("Создать"), row);
+    create->setObjectName(QStringLiteral("primaryBtn")); create->setCursor(Qt::PointingHandCursor);
+    rh->addStretch(); rh->addWidget(create);
+    ov->cardLayout()->addWidget(row);
+    const QString gid = currentPeerId_;
+    connect(create, &QPushButton::clicked, this, [this, ov, nameEd, gid]() {
+        const QString nm = nameEd->text().trimmed();
+        if (nm.isEmpty()) return;
+        // палитра цветов как в вебе
+        static const char* cols[] = {"#6fb1fc","#ffa44e","#ff7a82","#b691ff","#ffbc5c","#7ed7a8"};
+        api_->createGroupTopic(gid, nm, QStringLiteral("💬"),
+                               QString::fromLatin1(cols[currentTopics_.size() % 6]));
+        ov->closeAnimated();
+    });
+    ov->showAnimated();
+    nameEd->setFocus();
+}
+
 // Строка контакта (аватар + имя + подзаголовок + опц. время/бейдж).
 static QWidget* buildContactRow(const QString& url, const QString& avatarText,
                                 const QString& title, const QString& subtitle,
@@ -996,11 +1177,18 @@ void ChatPage::openChat(const Chat& chat) {
     else status = chat.isSaved ? QStringLiteral("Заметки для себя")
                                : (chat.online ? QStringLiteral("в сети") : QStringLiteral("не в сети"));
     peerStatus_->setText(status);
-    convStack_->setCurrentIndex(1);
-    clearMessages();
-    if (chat.kind == ChatKind::Group)        api_->getGroupMessages(chat.id);
-    else if (chat.kind == ChatKind::Channel) api_->getChannelMessages(chat.id);
-    else                                     api_->getMessages(chat.id);
+    currentForum_ = false;
+    currentTopicId_.clear();
+    if (topicBackBtn_) topicBackBtn_->setVisible(false);
+
+    if (chat.kind == ChatKind::Group) {
+        // Группа: сначала узнаём, форум ли это (тогда покажем список тем).
+        api_->getGroupTopics(chat.id);
+    } else if (chat.kind == ChatKind::Channel) {
+        convStack_->setCurrentIndex(1); clearMessages(); api_->getChannelMessages(chat.id);
+    } else {
+        convStack_->setCurrentIndex(1); clearMessages(); api_->getMessages(chat.id);
+    }
 
     // Сброс непрочитанных в списке
     const int idx = indexOfChat(chat.id);
@@ -1052,6 +1240,22 @@ bool ChatPage::eventFilter(QObject* obj, QEvent* e) {
             const QVariant fv = w->property("imgFull");
             if (fv.isValid() && fv.canConvert<QPixmap>()) {
                 ImageViewer::show(window(), fv.value<QPixmap>());
+                return true;
+            }
+            // Клик по теме форума.
+            const QVariant ti = w->property("topicIdx");
+            if (ti.isValid()) {
+                const int idx = ti.toInt();
+                if (idx >= 0 && idx < currentTopics_.size()) openTopic(currentTopics_[idx]);
+                return true;
+            }
+            // Клик по заголовку списка тем → инфо группы.
+            if (w->property("openPeerInfo").toBool() && !currentPeerId_.isEmpty()) {
+                int gi = indexOfChat(currentPeerId_);
+                QString av = gi >= 0 ? chats_[gi].avatarUrl : QString();
+                auto* info = new PeerInfoPanel(api_, currentPeerId_, false, currentPeerName_, av, window());
+                connect(info, &PeerInfoPanel::changed, this, [this]() { api_->getGroups(); });
+                info->showAnimated();
                 return true;
             }
         }
@@ -1416,6 +1620,10 @@ void ChatPage::showMessageMenu(QWidget* bubble, const QPoint& pos) {
     QAction* reply = menu.addAction(QStringLiteral("Ответить"));
     QAction* forward = plain ? menu.addAction(QStringLiteral("Переслать")) : nullptr;
     QAction* copy = plain ? menu.addAction(QStringLiteral("Копировать")) : nullptr;
+    QAction* pin = nullptr;
+    if ((currentKind_ == ChatKind::Group || currentKind_ == ChatKind::Channel)
+        && !id.isEmpty() && !id.startsWith(QStringLiteral("tmp_")))
+        pin = menu.addAction(QStringLiteral("Закрепить"));
     QAction* del = nullptr;
     if (sent && !id.isEmpty() && !id.startsWith(QStringLiteral("tmp_"))) {
         menu.addSeparator();
@@ -1427,6 +1635,7 @@ void ChatPage::showMessageMenu(QWidget* bubble, const QPoint& pos) {
     else if (ch == copy)     QApplication::clipboard()->setText(text);
     else if (ch == del)      api_->deleteMessage(id, currentKind_, currentPeerId_);
     else if (ch == forward)  forwardMessage(text);
+    else if (pin && ch == pin) api_->pinMessage(id, currentKind_, currentPeerId_, true);
 }
 
 void ChatPage::forwardMessage(const QString& text) {
@@ -1459,6 +1668,7 @@ void ChatPage::clearReplyTo() {
 }
 
 void ChatPage::reloadCurrentMessages() {
+    if (!currentTopicId_.isEmpty())             { api_->getTopicMessages(currentTopicId_); return; }
     if (currentPeerId_.isEmpty()) return;
     if (currentKind_ == ChatKind::Group)        api_->getGroupMessages(currentPeerId_);
     else if (currentKind_ == ChatKind::Channel) api_->getChannelMessages(currentPeerId_);
@@ -1488,10 +1698,12 @@ void ChatPage::onSendClicked() {
     composer_->clear();
     clearReplyTo();
 
-    if (currentKind_ == ChatKind::Group)        api_->sendGroupMessage(currentPeerId_, text, tempId, replyTo);
+    if (!currentTopicId_.isEmpty())             api_->sendTopicMessage(currentTopicId_, text, tempId, replyTo);
+    else if (currentKind_ == ChatKind::Group)   api_->sendGroupMessage(currentPeerId_, text, tempId, replyTo);
     else if (currentKind_ == ChatKind::Channel) api_->sendChannelMessage(currentPeerId_, text, tempId, replyTo);
     else                                        api_->sendMessage(currentPeerId_, text, tempId, disappearTtl_, replyTo);
-    bumpChat(currentPeerId_, text, m.time, /*incrementUnread*/ false);
+    if (currentTopicId_.isEmpty())
+        bumpChat(currentPeerId_, text, m.time, /*incrementUnread*/ false);
 }
 
 void ChatPage::onMessageSent(const ChatMessage& msg, const QString& receiverId, const QString& tempId) {

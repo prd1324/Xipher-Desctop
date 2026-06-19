@@ -1,5 +1,6 @@
 #include "ui/PeerInfoPanel.h"
 #include "ui/AvatarUtil.h"
+#include "ui/ToggleSwitch.h"
 #include "net/ApiClient.h"
 #include "net/Session.h"
 
@@ -114,6 +115,17 @@ QScrollBar::add-line:vertical,QScrollBar::sub-line:vertical{height:0;}
             QStringLiteral("Ссылка скопирована:\n%1").arg(url));
     });
 
+    if (!isChannel_) {
+        connect(api_, &ApiClient::topicsLoaded, this, [this](const QString& gid, bool forum, const QList<Topic>&) {
+            if (gid != peerId_) return;
+            forumMode_ = forum; rebuild();
+        });
+        connect(api_, &ApiClient::topicActionDone, this, [this](bool ok, const QString&) {
+            if (ok) api_->getGroupTopics(peerId_);
+        });
+        api_->getGroupTopics(peerId_);
+    }
+
     if (isChannel_) api_->getChannelInfo(peerId_);
     api_->getMembers(peerId_, isChannel_);
     rebuild();
@@ -223,6 +235,21 @@ void PeerInfoPanel::rebuild() {
         });
         mb->addWidget(save, 0, Qt::AlignRight);
 
+        // Режим форума (только группы).
+        if (!isChannel_) {
+            auto* forumRow = new QWidget();
+            auto* fh = new QHBoxLayout(forumRow); fh->setContentsMargins(0, 4, 0, 0); fh->setSpacing(12);
+            auto* fl = new QLabel(QStringLiteral("Режим форума (темы)"));
+            fl->setObjectName(QStringLiteral("desc"));
+            auto* sw = new ToggleSwitch();
+            sw->setChecked(forumMode_);
+            connect(sw, &QAbstractButton::toggled, this, [this](bool on) {
+                api_->setGroupForumMode(peerId_, on);
+            });
+            fh->addWidget(fl, 1); fh->addWidget(sw);
+            mb->addWidget(forumRow);
+        }
+
         auto* invite = new QPushButton(QStringLiteral("Создать ссылку-приглашение"));
         invite->setObjectName(QStringLiteral("ghostBtn")); invite->setCursor(Qt::PointingHandCursor);
         connect(invite, &QPushButton::clicked, this, [this]() { api_->createInvite(peerId_, isChannel_); });
@@ -263,11 +290,13 @@ void PeerInfoPanel::rebuild() {
                 if (!isChannel_) {
                     QAction* promote = menu.addAction(mm.role == QStringLiteral("admin")
                         ? QStringLiteral("Снять админа") : QStringLiteral("Сделать админом"));
+                    QAction* mute = menu.addAction(mm.isMuted ? QStringLiteral("Размутить") : QStringLiteral("Заглушить"));
                     QAction* kick = menu.addAction(QStringLiteral("Исключить"));
                     QAction* ch = menu.exec(act->mapToGlobal(QPoint(0, act->height())));
                     if (ch == promote)
                         api_->setGroupMemberRole(peerId_, mm.id,
                             mm.role == QStringLiteral("admin") ? QStringLiteral("member") : QStringLiteral("admin"));
+                    else if (ch == mute) api_->muteGroupMember(peerId_, mm.id, !mm.isMuted);
                     else if (ch == kick) api_->kickGroupMember(peerId_, mm.id);
                 } else {
                     QAction* ban = menu.addAction(mm.isBanned ? QStringLiteral("Разбанить") : QStringLiteral("Забанить"));

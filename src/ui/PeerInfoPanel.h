@@ -43,6 +43,7 @@ private:
     bool            canManage_ = false;
     bool            isCreator_ = false;
     bool            subscribed_ = true;
+    bool            forumMode_ = false;
     QList<Member>   members_;
 
     QVBoxLayout*    body_ = nullptr;
