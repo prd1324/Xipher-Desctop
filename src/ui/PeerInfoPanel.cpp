@@ -37,35 +37,36 @@ PeerInfoPanel::PeerInfoPanel(ApiClient* api, const QString& peerId, bool isChann
                              const QString& name, const QString& avatarUrl, QWidget* parent)
     : ModalOverlay(parent, 460), api_(api), peerId_(peerId), isChannel_(isChannel),
       name_(name), avatarUrl_(avatarUrl) {
-    card()->setFixedHeight(580);
+    card()->setFixedHeight(600);
     card()->setStyleSheet(QStringLiteral(R"QSS(
 #modalCard{background:#17151E;border:1px solid rgba(255,255,255,0.08);border-radius:18px;}
 QLabel{color:#F3F1F8;}
-#dlgHeader{background:qlineargradient(x1:0,y1:0,x2:1,y2:0,stop:0 #6D28D9,stop:0.55 #8B5CF6,stop:1 #B06CF0);
+#cover{background:qlineargradient(x1:0,y1:0,x2:1,y2:1,stop:0 #6D28D9,stop:0.5 #8B5CF6,stop:1 #B06CF0);
   border-top-left-radius:18px;border-top-right-radius:18px;}
-#dlgTitle{font-size:17px;font-weight:800;color:#fff;}
-#closeBtn{background:rgba(255,255,255,0.16);border:none;border-radius:16px;color:#fff;font-size:16px;font-weight:700;}
-#closeBtn:hover{background:rgba(255,255,255,0.30);}
-#card{background:#1A1822;border:1px solid rgba(255,255,255,0.06);border-radius:14px;}
+#coverName{font-size:21px;font-weight:800;color:#fff;}
+#coverSub{font-size:13px;color:rgba(255,255,255,0.88);}
+#closeBtn{background:rgba(255,255,255,0.18);border:none;border-radius:15px;color:#fff;font-size:15px;font-weight:700;}
+#closeBtn:hover{background:rgba(255,255,255,0.32);}
+#card{background:#1A1822;border:1px solid rgba(255,255,255,0.06);border-radius:16px;}
 #sec{color:#9B82C9;font-size:12px;font-weight:800;letter-spacing:1px;}
-#bigName{font-size:19px;font-weight:800;color:#fff;}
-#bigSub{font-size:13px;color:#C9B6FF;}
-#desc{font-size:13px;color:#CFC9DC;}
+#desc{font-size:14px;color:#CFC9DC;}
+#infoCaption{color:#726C82;font-size:12px;}
+#infoValue{color:#F3F1F8;font-size:14px;}
 #mName{color:#F3F1F8;font-size:14px;font-weight:600;}
 #mRole{color:#8B5CF6;font-size:11px;font-weight:700;}
 QLineEdit,QPlainTextEdit{background:#131218;border:1px solid rgba(255,255,255,0.10);border-radius:10px;
-  min-height:34px;padding:0 10px;color:#F3F1F8;selection-background-color:#8B5CF6;}
-QPlainTextEdit{padding:8px 10px;}
+  min-height:36px;padding:0 12px;color:#F3F1F8;selection-background-color:#8B5CF6;}
+QPlainTextEdit{padding:8px 12px;}
 QLineEdit:focus,QPlainTextEdit:focus{border:1px solid #8B5CF6;}
 #primaryBtn{background:qlineargradient(x1:0,y1:0,x2:1,y2:1,stop:0 #8B5CF6,stop:1 #6D28D9);
-  color:#fff;border:none;border-radius:10px;min-height:36px;padding:0 18px;font-weight:700;}
+  color:#fff;border:none;border-radius:10px;min-height:38px;padding:0 18px;font-weight:700;}
 #primaryBtn:hover{background:#9B72F8;}
-#ghostBtn{background:#221F2C;color:#F3F1F8;border:none;border-radius:10px;min-height:36px;padding:0 16px;}
+#ghostBtn{background:#221F2C;color:#F3F1F8;border:none;border-radius:10px;min-height:38px;padding:0 16px;}
 #ghostBtn:hover{background:#2C2838;}
 #dangerBtn{background:transparent;color:#E5687A;border:1px solid rgba(229,104,122,0.4);
-  border-radius:10px;min-height:36px;padding:0 16px;}
+  border-radius:10px;min-height:38px;padding:0 16px;}
 #dangerBtn:hover{background:rgba(229,104,122,0.12);}
-#memberRow{background:transparent;border-radius:9px;}
+#memberRow{background:transparent;border-radius:10px;}
 #memberRow:hover{background:#221F2C;}
 QScrollArea{background:transparent;border:none;}
 QScrollBar:vertical{background:transparent;width:8px;margin:2px;}
@@ -77,31 +78,25 @@ QScrollBar::add-line:vertical,QScrollBar::sub-line:vertical{height:0;}
     lay->setContentsMargins(0, 0, 0, 0);
     lay->setSpacing(0);
 
-    auto* head = new QWidget();
-    head->setObjectName(QStringLiteral("dlgHeader"));
-    head->setAttribute(Qt::WA_StyledBackground, true);
-    head->setFixedHeight(52);
-    auto* hh = new QHBoxLayout(head);
-    hh->setContentsMargins(20, 0, 12, 0);
-    auto* title = new QLabel(isChannel_ ? QStringLiteral("Канал") : QStringLiteral("Группа"));
-    title->setObjectName(QStringLiteral("dlgTitle"));
-    auto* close = new QPushButton(QStringLiteral("✕"));
-    close->setObjectName(QStringLiteral("closeBtn"));
-    close->setCursor(Qt::PointingHandCursor); close->setFixedSize(32, 32);
-    connect(close, &QPushButton::clicked, this, &ModalOverlay::closeAnimated);
-    hh->addWidget(title); hh->addStretch(); hh->addWidget(close);
-    lay->addWidget(head);
-
     auto* sa = new QScrollArea();
     sa->setWidgetResizable(true);
     sa->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     auto* content = new QWidget();
     body_ = new QVBoxLayout(content);
-    body_->setContentsMargins(14, 14, 14, 16);
-    body_->setSpacing(12);
+    body_->setContentsMargins(0, 0, 0, 0);
+    body_->setSpacing(0);
     body_->addStretch();
     sa->setWidget(content);
     lay->addWidget(sa, 1);
+
+    // Плавающая кнопка закрытия поверх обложки.
+    auto* close = new QPushButton(QStringLiteral("✕"), card());
+    close->setObjectName(QStringLiteral("closeBtn"));
+    close->setCursor(Qt::PointingHandCursor);
+    close->setFixedSize(30, 30);
+    close->move(card()->width() - 42, 12);
+    close->raise();
+    connect(close, &QPushButton::clicked, this, &ModalOverlay::closeAnimated);
 
     connect(api_, &ApiClient::channelInfoLoaded, this, &PeerInfoPanel::onChannelInfo);
     connect(api_, &ApiClient::membersLoaded, this, &PeerInfoPanel::onMembers);
@@ -164,26 +159,42 @@ void PeerInfoPanel::rebuild() {
     int at = 0;
     auto add = [&](QWidget* w) { body_->insertWidget(at++, w); };
 
-    // Шапка: аватар + имя + подзаголовок.
-    QVBoxLayout* hb = nullptr;
-    auto* hero = makeCard(hb);
-    auto* top = new QHBoxLayout(); top->setSpacing(14);
-    auto* av = new QLabel(); av->setFixedSize(72, 72);
-    Avatar::setRound(av, avatarUrl_, name_, 72);
-    auto* names = new QVBoxLayout(); names->setSpacing(3);
-    auto* nm = new QLabel(name_); nm->setObjectName(QStringLiteral("bigName")); nm->setWordWrap(true);
+    // ── Обложка: аватар по центру, имя, подпись ──────────────────────────────
+    auto* cover = new QWidget();
+    cover->setObjectName(QStringLiteral("cover"));
+    cover->setAttribute(Qt::WA_StyledBackground, true);
+    auto* cv = new QVBoxLayout(cover);
+    cv->setContentsMargins(16, 30, 16, 18);
+    cv->setSpacing(6);
+    auto* av = new QLabel(); av->setFixedSize(96, 96);
+    Avatar::setRound(av, avatarUrl_, name_, 96);
+    cv->addWidget(av, 0, Qt::AlignHCenter);
+    auto* nm = new QLabel(name_); nm->setObjectName(QStringLiteral("coverName"));
+    nm->setAlignment(Qt::AlignHCenter); nm->setWordWrap(true);
+    cv->addWidget(nm);
     QString sub = isChannel_ ? QStringLiteral("%1 подписчиков").arg(count_)
                              : QStringLiteral("%1 участников").arg(count_);
-    if (!customLink_.isEmpty()) sub += QStringLiteral("  ·  @") + customLink_;
-    auto* sl = new QLabel(sub); sl->setObjectName(QStringLiteral("bigSub"));
-    names->addStretch(); names->addWidget(nm); names->addWidget(sl); names->addStretch();
-    top->addWidget(av); top->addLayout(names, 1);
-    hb->addLayout(top);
+    if (!customLink_.isEmpty()) sub += QStringLiteral("   @") + customLink_;
+    auto* sl = new QLabel(sub); sl->setObjectName(QStringLiteral("coverSub"));
+    sl->setAlignment(Qt::AlignHCenter);
+    cv->addWidget(sl);
+    add(cover);
+
+    // ── Контент в полях ──────────────────────────────────────────────────────
+    auto* contentW = new QWidget();
+    auto* body = new QVBoxLayout(contentW);
+    body->setContentsMargins(14, 14, 14, 16);
+    body->setSpacing(12);
+
+    // Описание.
     if (!description_.isEmpty()) {
+        QVBoxLayout* db = nullptr;
+        auto* dc = makeCard(db);
+        db->addWidget(sec(QStringLiteral("ОПИСАНИЕ")));
         auto* d = new QLabel(description_); d->setObjectName(QStringLiteral("desc")); d->setWordWrap(true);
-        hb->addWidget(d);
+        db->addWidget(d);
+        body->addWidget(dc);
     }
-    add(hero);
 
     // Управление (создатель/админ).
     if (canManage_) {
@@ -216,7 +227,7 @@ void PeerInfoPanel::rebuild() {
         invite->setObjectName(QStringLiteral("ghostBtn")); invite->setCursor(Qt::PointingHandCursor);
         connect(invite, &QPushButton::clicked, this, [this]() { api_->createInvite(peerId_, isChannel_); });
         mb->addWidget(invite);
-        add(mgmt);
+        body->addWidget(mgmt);
     }
 
     // Участники.
@@ -268,7 +279,7 @@ void PeerInfoPanel::rebuild() {
         }
         pb->addWidget(row);
     }
-    add(pc);
+    body->addWidget(pc);
 
     // Действия внизу: подписка/выход/удаление.
     QVBoxLayout* ab = nullptr;
@@ -301,5 +312,6 @@ void PeerInfoPanel::rebuild() {
         });
         ab->addWidget(del);
     }
-    add(ac);
+    body->addWidget(ac);
+    add(contentW);
 }

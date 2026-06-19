@@ -21,6 +21,9 @@
 #include <QTimeEdit>
 #include <QPushButton>
 #include <QCheckBox>
+#include <QPainter>
+#include <QPixmap>
+#include <QEvent>
 #include <QFileDialog>
 #include <QDesktopServices>
 #include <QFile>
@@ -85,43 +88,61 @@ QScrollArea* scrollPage(QWidget* content) {
 
 // Ширина карточки под размер окна: на больших окнах — шире (правая часть просторнее),
 // на маленьких — ужимается, чтобы не вылезать за края.
-int settingsCardWidth(QWidget* parent) {
+[[maybe_unused]] int settingsCardWidth(QWidget* parent) {
     const int pw = parent ? parent->width() : 1000;
     return qBound(660, pw - 90, 920);
+}
+
+// Цветной чип-иконка (как в iOS/Telegram настройках).
+QLabel* iconChip(int kind, const QColor& color, int box = 30) {
+    auto* l = new QLabel();
+    l->setFixedSize(box, box);
+    QPixmap pm(box * 2, box * 2);
+    pm.setDevicePixelRatio(2.0);
+    pm.fill(Qt::transparent);
+    QPainter p(&pm);
+    p.setRenderHint(QPainter::Antialiasing, true);
+    p.setBrush(color); p.setPen(Qt::NoPen);
+    p.drawRoundedRect(QRectF(0, 0, box, box), 8, 8);
+    const int ic = 18;
+    p.drawPixmap((box - ic) / 2, (box - ic) / 2, Icons::pixmap(Icons::Kind(kind), ic, QColor(0xFF,0xFF,0xFF)));
+    p.end();
+    l->setPixmap(pm);
+    return l;
 }
 
 } // namespace
 
 SettingsDialog::SettingsDialog(ApiClient* api, QWidget* parent)
-    : ModalOverlay(parent, settingsCardWidth(parent)), api_(api) {
-    card()->setFixedHeight(560);
+    : ModalOverlay(parent, 470), api_(api) {
+    card()->setFixedHeight(600);
     card()->setStyleSheet(QStringLiteral(R"QSS(
 #modalCard{background:#17151E;border:1px solid rgba(255,255,255,0.08);border-radius:18px;}
 QLabel{color:#F3F1F8;}
-#settingsHeader{
-  background:qlineargradient(x1:0,y1:0,x2:1,y2:0,stop:0 #6D28D9,stop:0.55 #8B5CF6,stop:1 #B06CF0);
+#cover{background:qlineargradient(x1:0,y1:0,x2:1,y2:1,stop:0 #6D28D9,stop:0.5 #8B5CF6,stop:1 #B06CF0);
   border-top-left-radius:18px;border-top-right-radius:18px;}
-#settingsTitle{font-size:18px;font-weight:800;color:#FFFFFF;}
-#closeBtn{background:rgba(255,255,255,0.16);border:none;border-radius:16px;color:#FFFFFF;font-size:16px;font-weight:700;}
-#closeBtn:hover{background:rgba(255,255,255,0.30);}
-#navWrap{background:#141019;border-radius:14px;}
-#settingsNav{background:transparent;border:none;outline:none;}
-#settingsNav::item{color:#ACA6BD;padding:9px 10px;border-radius:10px;margin:2px 6px;}
-#settingsNav::item:hover{background:#221F2C;color:#F3F1F8;}
-#settingsNav::item:selected{background:rgba(139,92,246,0.20);color:#FFFFFF;}
+#coverName{font-size:21px;font-weight:800;color:#FFFFFF;}
+#coverUser{font-size:13px;color:rgba(255,255,255,0.85);}
+#closeBtn{background:rgba(255,255,255,0.18);border:none;border-radius:15px;color:#fff;font-size:15px;font-weight:700;}
+#closeBtn:hover{background:rgba(255,255,255,0.32);}
+#backBtn{background:rgba(255,255,255,0.18);border:none;border-radius:15px;color:#fff;font-size:18px;font-weight:700;}
+#backBtn:hover{background:rgba(255,255,255,0.32);}
+#subHeader{background:qlineargradient(x1:0,y1:0,x2:1,y2:0,stop:0 #6D28D9,stop:1 #8B5CF6);
+  border-top-left-radius:18px;border-top-right-radius:18px;}
+#subTitle{font-size:17px;font-weight:800;color:#fff;}
+#navRow{background:transparent;border-radius:12px;}
+#navRow:hover{background:#221F2C;}
+#navLabel{font-size:15px;color:#F3F1F8;}
+#chevron{color:#55506A;font-size:18px;}
+#groupCard{background:#1A1822;border:1px solid rgba(255,255,255,0.05);border-radius:16px;}
 #card{background:#1A1822;border:1px solid rgba(255,255,255,0.06);border-radius:14px;}
 #cardTitle{font-size:12px;font-weight:800;color:#9B82C9;letter-spacing:1px;}
 #rowLabel{font-size:14px;color:#CFC9DC;}
 #hint{font-size:12px;color:#726C82;}
-#heroBanner{border-radius:16px;
-  background:qlineargradient(x1:0,y1:0,x2:1,y2:1,stop:0 #2A2140,stop:0.5 #3A2A5E,stop:1 #221A33);
-  border:1px solid rgba(139,92,246,0.25);}
-#heroName{font-size:19px;font-weight:800;color:#FFFFFF;}
-#heroUser{font-size:13px;color:#C9B6FF;}
 QLineEdit,QPlainTextEdit,QComboBox,QSpinBox,QTimeEdit{
   background:#131218;border:1px solid rgba(255,255,255,0.10);border-radius:10px;
-  min-height:34px;padding:0 10px;color:#F3F1F8;selection-background-color:#8B5CF6;}
-QPlainTextEdit{padding:8px 10px;}
+  min-height:36px;padding:0 12px;color:#F3F1F8;selection-background-color:#8B5CF6;}
+QPlainTextEdit{padding:8px 12px;}
 QLineEdit:focus,QPlainTextEdit:focus,QComboBox:focus,QSpinBox:focus,QTimeEdit:focus{border:1px solid #8B5CF6;}
 QLineEdit:disabled{color:#726C82;}
 QComboBox::drop-down{border:none;width:22px;}
@@ -136,11 +157,9 @@ QSpinBox::up-button,QSpinBox::down-button{width:0;border:none;}
 #dangerBtn{background:transparent;color:#E5687A;border:1px solid rgba(229,104,122,0.4);
   border-radius:10px;min-height:34px;padding:0 16px;}
 #dangerBtn:hover{background:rgba(229,104,122,0.12);}
-#closeBtn{background:transparent;border:none;color:#ACA6BD;font-size:20px;}
-#closeBtn:hover{color:#F3F1F8;}
 #statusOk{color:#46B98A;font-size:12px;}
 #pill{background:rgba(139,92,246,0.18);color:#C9B6FF;border-radius:10px;padding:3px 10px;font-size:12px;font-weight:700;}
-QScrollArea{background:transparent;}
+QScrollArea{background:transparent;border:none;}
 QScrollBar:vertical{background:transparent;width:8px;margin:2px;}
 QScrollBar::handle:vertical{background:rgba(255,255,255,0.12);border-radius:4px;min-height:36px;}
 QScrollBar::add-line:vertical,QScrollBar::sub-line:vertical{height:0;}
@@ -157,135 +176,187 @@ void SettingsDialog::buildChrome() {
     lay->setContentsMargins(0, 0, 0, 0);
     lay->setSpacing(0);
 
-    // Шапка — градиентная плашка под акцент, скруглённая сверху как карточка.
-    auto* head = new QWidget();
-    head->setObjectName(QStringLiteral("settingsHeader"));
-    head->setAttribute(Qt::WA_StyledBackground, true);
-    head->setFixedHeight(56);
-    auto* hh = new QHBoxLayout(head);
-    hh->setContentsMargins(22, 0, 14, 0);
-    auto* title = new QLabel(QStringLiteral("Настройки"));
-    title->setObjectName(QStringLiteral("settingsTitle"));
+    stack_ = new QStackedWidget();
+    lay->addWidget(stack_, 1);
+
+    // ── Главный экран: обложка + строки-разделы ──────────────────────────────
+    auto* main = new QWidget();
+    auto* mv = new QVBoxLayout(main);
+    mv->setContentsMargins(0, 0, 0, 0);
+    mv->setSpacing(0);
+
+    // Обложка с аватаром по центру.
+    auto* cover = new QWidget();
+    cover->setObjectName(QStringLiteral("cover"));
+    cover->setAttribute(Qt::WA_StyledBackground, true);
+    cover->setFixedHeight(190);
+    auto* cv = new QVBoxLayout(cover);
+    cv->setContentsMargins(16, 12, 16, 16);
+    cv->setSpacing(6);
+    auto* topRow = new QHBoxLayout();
+    topRow->addStretch();
     auto* close = new QPushButton(QStringLiteral("✕"));
     close->setObjectName(QStringLiteral("closeBtn"));
-    close->setCursor(Qt::PointingHandCursor);
-    close->setFixedSize(32, 32);
+    close->setCursor(Qt::PointingHandCursor); close->setFixedSize(30, 30);
     connect(close, &QPushButton::clicked, this, &ModalOverlay::closeAnimated);
-    hh->addWidget(title);
-    hh->addStretch();
-    hh->addWidget(close);
-    lay->addWidget(head);
+    topRow->addWidget(close);
+    cv->addLayout(topRow);
 
-    // Тело: навигация (в своей подложке) + стек.
-    auto* bodyW = new QWidget();
-    auto* bh = new QHBoxLayout(bodyW);
-    bh->setContentsMargins(10, 8, 10, 12);
-    bh->setSpacing(8);
-
-    auto* navWrap = new QWidget();
-    navWrap->setObjectName(QStringLiteral("navWrap"));
-    navWrap->setAttribute(Qt::WA_StyledBackground, true);
-    navWrap->setFixedWidth(244);
-    auto* nwl = new QVBoxLayout(navWrap);
-    nwl->setContentsMargins(2, 8, 2, 8);
-    nav_ = new QListWidget();
-    nav_->setObjectName(QStringLiteral("settingsNav"));
-    nav_->setIconSize(QSize(18, 18));
-    nav_->setFocusPolicy(Qt::NoFocus);
-    nav_->setVerticalScrollMode(QAbstractItemView::ScrollPerPixel);
-    nwl->addWidget(nav_);
-
-    stack_ = new QStackedWidget();
-
-    bh->addWidget(navWrap);
-    bh->addWidget(stack_, 1);
-    lay->addWidget(bodyW, 1);
-
-    connect(nav_, &QListWidget::currentRowChanged, stack_, &QStackedWidget::setCurrentIndex);
-
-    addSection(QStringLiteral("Мой аккаунт"),    Icons::User,   QColor(0x8B,0x5C,0xF6), buildAccountPage());
-    addSection(QStringLiteral("Уведомления"),    Icons::Bell,   QColor(0xF0,0x9A,0x3E), buildNotificationsPage());
-    addSection(QStringLiteral("Приватность"),    Icons::Shield, QColor(0x46,0xB9,0x8A), buildPrivacyPage());
-    addSection(QStringLiteral("Звонки"),         Icons::Phone,  QColor(0x4C,0x9A,0xF5), buildCallsPage());
-    addSection(QStringLiteral("Активные сеансы"),Icons::Device, QColor(0x5E,0xC8,0xD8), buildSessionsPage());
-    addSection(QStringLiteral("Заблокированные"),Icons::Block,  QColor(0xE5,0x68,0x7A), buildBlockedPage());
-    addSection(QStringLiteral("Язык"),           Icons::Globe,  QColor(0x7E,0x8B,0xF0), buildLanguagePage());
-    addSection(QStringLiteral("Email для входа"), Icons::Lock,  QColor(0xC0,0x86,0x4E), buildEmailPage());
-    addSection(QStringLiteral("Premium"),        Icons::Star,   QColor(0xF0,0xC8,0x4C), buildPremiumPage());
-    addSection(QStringLiteral("О приложении"),   Icons::Gear,   QColor(0x9A,0x93,0xAD), buildAboutPage());
-
-    nav_->setCurrentRow(0);
-}
-
-void SettingsDialog::addSection(const QString& title, int iconKind,
-                                const QColor& iconColor, QWidget* page) {
-    auto* item = new QListWidgetItem(Icons::icon(Icons::Kind(iconKind), 18, iconColor), title);
-    nav_->addItem(item);
-    stack_->addWidget(scrollPage(page));
-}
-
-// ── Мой аккаунт ───────────────────────────────────────────────────────────────
-QWidget* SettingsDialog::buildAccountPage() {
-    auto* page = new QWidget();
-    auto* v = new QVBoxLayout(page);
-    v->setContentsMargins(12, 4, 12, 12);
-    v->setSpacing(14);
-
-    // Герой — градиентный баннер с аватаром (как обложка профиля в Telegram).
-    auto* hero = new QFrame();
-    hero->setObjectName(QStringLiteral("heroBanner"));
-    auto* hl = new QHBoxLayout(hero);
-    hl->setContentsMargins(18, 16, 18, 16);
-    hl->setSpacing(16);
     avatar_ = new QLabel();
-    avatar_->setFixedSize(76, 76);
-    Avatar::setRound(avatar_, QString(), Session::instance().username, 76);
-    auto* camBtn = new QPushButton(QStringLiteral("Сменить фото"));
-    camBtn->setCursor(Qt::PointingHandCursor);
-    camBtn->setStyleSheet(QStringLiteral(
-        "QPushButton{background:rgba(255,255,255,0.14);color:#fff;border:none;"
-        "border-radius:9px;min-height:30px;padding:0 14px;font-size:12px;font-weight:600;}"
-        "QPushButton:hover{background:rgba(255,255,255,0.24);}"));
-    connect(camBtn, &QPushButton::clicked, this, [this]() {
-        const QString fn = QFileDialog::getOpenFileName(this, QStringLiteral("Выберите фото"),
-            QString(), QStringLiteral("Изображения (*.jpg *.jpeg *.png *.gif)"));
-        if (fn.isEmpty()) return;
-        QFile f(fn);
-        if (!f.open(QIODevice::ReadOnly)) return;
-        const QByteArray bytes = f.readAll();
-        api_->uploadAvatar(bytes, QFileInfo(fn).fileName());
-    });
-    // Сам аватар тоже кликабельный (как в Telegram) — открывает тот же выбор фото.
+    avatar_->setFixedSize(92, 92);
     avatar_->setCursor(Qt::PointingHandCursor);
     avatar_->setToolTip(QStringLiteral("Сменить фото"));
+    Avatar::setRound(avatar_, QString(), Session::instance().username, 92);
     auto* avHit = new QPushButton(avatar_);
     avHit->setCursor(Qt::PointingHandCursor);
-    avHit->setFixedSize(76, 76);
+    avHit->setFixedSize(92, 92);
     avHit->setStyleSheet(QStringLiteral(
-        "QPushButton{background:transparent;border:none;border-radius:38px;}"
-        "QPushButton:hover{background:rgba(0,0,0,0.30);}"));
-    connect(avHit, &QPushButton::clicked, camBtn, &QPushButton::click);
-    auto* names = new QVBoxLayout();
-    names->setSpacing(2);
+        "QPushButton{background:transparent;border:2px solid rgba(255,255,255,0.5);border-radius:46px;}"
+        "QPushButton:hover{background:rgba(0,0,0,0.25);}"));
+    connect(avHit, &QPushButton::clicked, this, &SettingsDialog::pickAvatar);
+    cv->addWidget(avatar_, 0, Qt::AlignHCenter);
+
     heroName_ = new QLabel(Session::instance().username);
-    heroName_->setObjectName(QStringLiteral("heroName"));
+    heroName_->setObjectName(QStringLiteral("coverName"));
+    heroName_->setAlignment(Qt::AlignHCenter);
     heroUser_ = new QLabel(QStringLiteral("@") + Session::instance().username);
-    heroUser_->setObjectName(QStringLiteral("heroUser"));
-    names->addStretch();
-    names->addWidget(heroName_);
-    names->addWidget(heroUser_);
-    names->addWidget(camBtn, 0, Qt::AlignLeft);
-    names->addStretch();
-    hl->addWidget(avatar_);
-    hl->addLayout(names, 1);
-    v->addWidget(hero);
+    heroUser_->setObjectName(QStringLiteral("coverUser"));
+    heroUser_->setAlignment(Qt::AlignHCenter);
+    cv->addWidget(heroName_);
+    cv->addWidget(heroUser_);
+    mv->addWidget(cover);
 
     connect(api_, &ApiClient::avatarUploaded, this, [this](bool ok, const QString& url) {
         if (!ok) return;
         if (!url.isEmpty()) avatarUrl_ = url;
         Avatar::setRound(avatar_, avatarUrl_,
-                         heroName_->text().isEmpty() ? Session::instance().username : heroName_->text(), 76);
+                         heroName_->text().isEmpty() ? Session::instance().username : heroName_->text(), 92);
     });
+
+    // Список разделов (скролл).
+    auto* sa = new QScrollArea();
+    sa->setWidgetResizable(true);
+    sa->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    sa->setFrameShape(QFrame::NoFrame);
+    auto* listW = new QWidget();
+    auto* list = new QVBoxLayout(listW);
+    list->setContentsMargins(12, 12, 12, 14);
+    list->setSpacing(10);
+
+    auto* grp1 = new QFrame(); grp1->setObjectName(QStringLiteral("groupCard"));
+    auto* g1 = new QVBoxLayout(grp1); g1->setContentsMargins(6, 6, 6, 6); g1->setSpacing(2);
+    addSection(g1, QStringLiteral("Мой аккаунт"),    Icons::User,   QColor(0x8B,0x5C,0xF6), buildAccountPage());
+    addSection(g1, QStringLiteral("Premium"),        Icons::Star,   QColor(0xF0,0xC8,0x4C), buildPremiumPage());
+    list->addWidget(grp1);
+
+    auto* grp2 = new QFrame(); grp2->setObjectName(QStringLiteral("groupCard"));
+    auto* g2 = new QVBoxLayout(grp2); g2->setContentsMargins(6, 6, 6, 6); g2->setSpacing(2);
+    addSection(g2, QStringLiteral("Уведомления и звуки"), Icons::Bell, QColor(0xF0,0x9A,0x3E), buildNotificationsPage());
+    addSection(g2, QStringLiteral("Приватность"),    Icons::Shield, QColor(0x46,0xB9,0x8A), buildPrivacyPage());
+    addSection(g2, QStringLiteral("Звонки"),         Icons::Phone,  QColor(0x4C,0x9A,0xF5), buildCallsPage());
+    addSection(g2, QStringLiteral("Язык"),           Icons::Globe,  QColor(0x7E,0x8B,0xF0), buildLanguagePage());
+    list->addWidget(grp2);
+
+    auto* grp3 = new QFrame(); grp3->setObjectName(QStringLiteral("groupCard"));
+    auto* g3 = new QVBoxLayout(grp3); g3->setContentsMargins(6, 6, 6, 6); g3->setSpacing(2);
+    addSection(g3, QStringLiteral("Активные сеансы"),Icons::Device, QColor(0x5E,0xC8,0xD8), buildSessionsPage());
+    addSection(g3, QStringLiteral("Заблокированные"),Icons::Block,  QColor(0xE5,0x68,0x7A), buildBlockedPage());
+    addSection(g3, QStringLiteral("Email для входа"), Icons::Lock,  QColor(0xC0,0x86,0x4E), buildEmailPage());
+    list->addWidget(grp3);
+
+    auto* grp4 = new QFrame(); grp4->setObjectName(QStringLiteral("groupCard"));
+    auto* g4 = new QVBoxLayout(grp4); g4->setContentsMargins(6, 6, 6, 6); g4->setSpacing(2);
+    addSection(g4, QStringLiteral("О приложении"),   Icons::Gear,   QColor(0x9A,0x93,0xAD), buildAboutPage());
+    list->addWidget(grp4);
+
+    list->addStretch();
+    sa->setWidget(listW);
+    mv->addWidget(sa, 1);
+
+    stack_->addWidget(main);          // индекс 0 — главный
+    stack_->setCurrentIndex(0);
+}
+
+QWidget* SettingsDialog::wrapSubPage(const QString& title, QWidget* content) {
+    auto* page = new QWidget();
+    auto* v = new QVBoxLayout(page);
+    v->setContentsMargins(0, 0, 0, 0);
+    v->setSpacing(0);
+
+    auto* head = new QWidget();
+    head->setObjectName(QStringLiteral("subHeader"));
+    head->setAttribute(Qt::WA_StyledBackground, true);
+    head->setFixedHeight(52);
+    auto* hh = new QHBoxLayout(head);
+    hh->setContentsMargins(10, 0, 12, 0);
+    auto* back = new QPushButton(QStringLiteral("‹"));
+    back->setObjectName(QStringLiteral("backBtn"));
+    back->setCursor(Qt::PointingHandCursor); back->setFixedSize(30, 30);
+    connect(back, &QPushButton::clicked, this, [this]() { stack_->setCurrentIndex(0); });
+    auto* t = new QLabel(title); t->setObjectName(QStringLiteral("subTitle"));
+    auto* close = new QPushButton(QStringLiteral("✕"));
+    close->setObjectName(QStringLiteral("closeBtn"));
+    close->setCursor(Qt::PointingHandCursor); close->setFixedSize(30, 30);
+    connect(close, &QPushButton::clicked, this, &ModalOverlay::closeAnimated);
+    hh->addWidget(back); hh->addSpacing(6); hh->addWidget(t); hh->addStretch(); hh->addWidget(close);
+    v->addWidget(head);
+    v->addWidget(scrollPage(content), 1);
+    return page;
+}
+
+void SettingsDialog::addSection(QVBoxLayout* listLayout, const QString& title, int iconKind,
+                                const QColor& iconColor, QWidget* page) {
+    const int idx = stack_->addWidget(wrapSubPage(title, page));
+
+    auto* row = new QFrame();
+    row->setObjectName(QStringLiteral("navRow"));
+    row->setCursor(Qt::PointingHandCursor);
+    auto* h = new QHBoxLayout(row);
+    h->setContentsMargins(8, 7, 12, 7);
+    h->setSpacing(12);
+    h->addWidget(iconChip(iconKind, iconColor));
+    auto* lbl = new QLabel(title); lbl->setObjectName(QStringLiteral("navLabel"));
+    h->addWidget(lbl, 1);
+    auto* chev = new QLabel(QStringLiteral("›")); chev->setObjectName(QStringLiteral("chevron"));
+    h->addWidget(chev);
+
+    row->installEventFilter(this);
+    row->setProperty("navIdx", idx);
+    listLayout->addWidget(row);
+}
+
+bool SettingsDialog::eventFilter(QObject* obj, QEvent* e) {
+    if (e->type() == QEvent::MouseButtonRelease) {
+        if (auto* w = qobject_cast<QWidget*>(obj)) {
+            const QVariant idx = w->property("navIdx");
+            if (idx.isValid()) { stack_->setCurrentIndex(idx.toInt()); return true; }
+        }
+    }
+    return ModalOverlay::eventFilter(obj, e);
+}
+
+// ── Мой аккаунт ───────────────────────────────────────────────────────────────
+void SettingsDialog::pickAvatar() {
+    const QString fn = QFileDialog::getOpenFileName(this, QStringLiteral("Выберите фото"),
+        QString(), QStringLiteral("Изображения (*.jpg *.jpeg *.png *.gif)"));
+    if (fn.isEmpty()) return;
+    QFile f(fn);
+    if (!f.open(QIODevice::ReadOnly)) return;
+    api_->uploadAvatar(f.readAll(), QFileInfo(fn).fileName());
+}
+
+QWidget* SettingsDialog::buildAccountPage() {
+    auto* page = new QWidget();
+    auto* v = new QVBoxLayout(page);
+    v->setContentsMargins(12, 14, 12, 12);
+    v->setSpacing(14);
+
+    // Кнопка смены фото (аватар и имя показываются на обложке главного экрана).
+    auto* changePhoto = new QPushButton(QStringLiteral("Изменить фото профиля"));
+    changePhoto->setObjectName(QStringLiteral("ghostBtn"));
+    changePhoto->setCursor(Qt::PointingHandCursor);
+    connect(changePhoto, &QPushButton::clicked, this, &SettingsDialog::pickAvatar);
+    v->addWidget(changePhoto);
 
     // Форма.
     QVBoxLayout* body = nullptr;
@@ -350,7 +421,7 @@ void SettingsDialog::onProfileLoaded(const QJsonObject& obj) {
     const QString display = u.value(QStringLiteral("display_name")).toString();
     const QString uname   = u.value(QStringLiteral("username")).toString();
     avatarUrl_ = u.value(QStringLiteral("avatar_url")).toString();
-    if (avatar_) Avatar::setRound(avatar_, avatarUrl_, display.isEmpty() ? uname : display, 76);
+    if (avatar_) Avatar::setRound(avatar_, avatarUrl_, display.isEmpty() ? uname : display, 92);
     if (heroName_) heroName_->setText(display.isEmpty() ? uname : display);
     if (heroUser_) heroUser_->setText(QStringLiteral("@") + uname);
     if (firstName_) firstName_->setText(u.value(QStringLiteral("first_name")).toString());

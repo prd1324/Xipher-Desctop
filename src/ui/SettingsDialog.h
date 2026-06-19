@@ -27,7 +27,11 @@ public:
 
 private:
     void buildChrome();
-    void addSection(const QString& title, int iconKind, const QColor& iconColor, QWidget* page);
+    // Добавляет sub-страницу в стек и строку-раздел на главный экран (Telegram-style).
+    void addSection(QVBoxLayout* list, const QString& title, int iconKind,
+                    const QColor& iconColor, QWidget* page);
+    QWidget* wrapSubPage(const QString& title, QWidget* content);   // header «‹ назад» + scroll
+    void pickAvatar();
 
     QWidget* buildAccountPage();
     QWidget* buildNotificationsPage();
@@ -43,8 +47,12 @@ private:
     void onProfileLoaded(const QJsonObject& obj);
     void refreshSessions();
 
+protected:
+    bool eventFilter(QObject* obj, QEvent* e) override;
+
+private:
+
     ApiClient*      api_;
-    QListWidget*    nav_   = nullptr;
     QStackedWidget* stack_ = nullptr;
 
     // Аккаунт.
