@@ -289,8 +289,17 @@ ChatPage::ChatPage(ApiClient* api, WsClient* ws, QWidget* parent)
     connect(peerReloadTimer_, &QTimer::timeout, this, [this]() { reloadCurrentMessages(); });
     connect(ws_,  &WsClient::peerMessage, this, [this](const QString& chatId) {
         if (chatId == currentPeerId_ &&
-            (currentKind_ == ChatKind::Group || currentKind_ == ChatKind::Channel))
+            (currentKind_ == ChatKind::Group || currentKind_ == ChatKind::Channel)) {
             peerReloadTimer_->start();
+        } else {
+            // Не открытый сейчас канал/группа — подсветим в списке и уведомим.
+            const int idx = indexOfChat(chatId);
+            if (idx >= 0) {
+                chats_[idx].unread += 1;
+                rebuildChatList();
+                emit notify(chats_[idx].displayName, QStringLiteral("Новое сообщение"));
+            }
+        }
     });
     connect(api_, &ApiClient::voiceUploaded,   this, &ChatPage::onVoiceUploaded);
     connect(api_, &ApiClient::fileFetched,     this, &ChatPage::onFileFetched);

@@ -5,3 +5,7 @@ CMakeFiles/
 
 # WebRTC deps (собираются локально)
 /third_party/
+
+# Сборка/деплой артефакты
+/dist/
+/installer/output/
