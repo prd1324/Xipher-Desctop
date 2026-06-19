@@ -19,6 +19,28 @@
 
 Наша индивидуальная штука: тег **DESKTOP** рядом с брендом.
 
+## Скачать
+
+Готовые сборки для Windows 10/11 (64-bit):
+
+- **[Скачать установщик / последний релиз →](https://github.com/prd1324/Xipher-Desctop/releases/latest)**
+- Страница загрузки на сайте: **<https://messenger.xipher.pro/download>**
+- Все версии: <https://github.com/prd1324/Xipher-Desctop/releases>
+
+Доступны установщик (`Xipher-Setup.exe`, создаёт ярлыки) и портативная версия
+(папка с `Xipher.exe`, запуск без установки).
+
+## Подпись кода
+
+Сборки Xipher для Windows подписываются с использованием [SignPath.io](https://signpath.io),
+бесплатным сертификатом для подписи кода, предоставленным фондом
+[SignPath Foundation](https://signpath.org).
+
+> This project uses free code signing provided by [SignPath.io](https://signpath.io)
+> and a free code signing certificate by the [SignPath Foundation](https://signpath.org).
+
+Лицензия — [MIT](LICENSE).
+
 ## v0.2 — Мессенджер (ядро)
 
 - **Список чатов** (`/api/chats`) в сайдбаре: аватар, имя, последнее сообщение,
