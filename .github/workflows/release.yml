@@ -60,8 +60,8 @@ jobs:
         with:
           api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
           organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
-          project-slug: 'XIpher_desctop'
-          signing-policy-slug: 'release-signing'
+          project-slug: 'Xipher_Desktop'
+          signing-policy-slug: 'Xipher_test'
           artifact-configuration-slug: 'exe'
           github-artifact-id: ${{ steps.upload-unsigned.outputs.artifact-id }}
           wait-for-completion: true
