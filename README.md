@@ -1,99 +1,66 @@
-# Xipher Desktop — v0.1
+<div align="center">
 
-Фул-нативный десктоп-клиент Xipher на **Qt 6 / C++** (без webview).
-Архитектурный ориентир — Telegram Desktop (tdesktop тоже на Qt).
+# Xipher Desktop
 
-В версии **0.1** реализованы:
+**Нативный десктоп-клиент приватного мессенджера Xipher — на C++ и Qt 6, без webview.**
 
-- **Вход** — экран 1:1 с веб-дизайном (`web/login.html` + `web/css/login.css`):
-  тёмный фон `#05060f` с радиальными свечениями, «glass»-карточка, бренд, поля,
-  градиентная кнопка, ошибки под полями, ссылки.
-- **Регистрация** — 1:1 с `web/register.html` + `web/js/register.js`: валидация ника,
-  живая проверка доступности через `/api/check-username` (дебаунс 500 мс),
-  подтверждение пароля.
-- **Мини-экран после входа** (пока без дизайна) — подтверждает успешный вход
-  (имя, `user_id`, кнопка выхода). Заглушка под будущий мессенджер.
-- Реальная работа против прод-API **https://messenger.xipher.pro** по HTTPS.
-- Восстановление сессии по сохранённому токену (`QSettings` → реестр
-  `HKCU\Software\Xipher\Desktop`), проверка через `/api/validate-token`.
+[![License: MIT](https://img.shields.io/badge/License-MIT-8B5CF6.svg)](LICENSE)
+![Platform](https://img.shields.io/badge/platform-Windows%2010%2F11-0078D6.svg)
+![Built with Qt](https://img.shields.io/badge/built%20with-Qt%206%20%2F%20C%2B%2B-41CD52.svg)
+[![Download](https://img.shields.io/badge/⬇%20Скачать-messenger.xipher.pro/download-8B5CF6.svg)](https://messenger.xipher.pro/download)
 
-Наша индивидуальная штука: тег **DESKTOP** рядом с брендом.
+[Скачать](#-скачать) · [Возможности](#-возможности) · [Сборка из исходников](#-сборка-из-исходников) · [Подпись кода](#-подпись-кода)
 
-## Скачать
+</div>
 
-Готовые сборки для Windows 10/11 (64-bit):
+---
 
-- **[Скачать установщик / последний релиз →](https://github.com/prd1324/Xipher-Desctop/releases/latest)**
-- Страница загрузки на сайте: **<https://messenger.xipher.pro/download>**
-- Все версии: <https://github.com/prd1324/Xipher-Desctop/releases>
+Xipher — свободный мессенджер с упором на приватность. **Xipher Desktop** — его полностью
+нативный клиент для Windows: написан на C++ с Qt 6, без встроенного браузера, поэтому работает
+быстро и потребляет мало памяти. Архитектурный ориентир — Telegram Desktop.
 
-Доступны установщик (`Xipher-Setup.exe`, создаёт ярлыки) и портативная версия
-(папка с `Xipher.exe`, запуск без установки).
+Проект разрабатывается открыто под лицензией [MIT](LICENSE).
 
-## Подпись кода
+## ⬇ Скачать
 
-Сборки Xipher для Windows подписываются с использованием [SignPath.io](https://signpath.io),
-бесплатным сертификатом для подписи кода, предоставленным фондом
-[SignPath Foundation](https://signpath.org).
+Готовые сборки для **Windows 10/11 (64-bit)**:
 
-> This project uses free code signing provided by [SignPath.io](https://signpath.io)
-> and a free code signing certificate by the [SignPath Foundation](https://signpath.org).
+| | |
+|---|---|
+| 🟣 **Последний релиз** | **[github.com/prd1324/Xipher-Desctop/releases/latest](https://github.com/prd1324/Xipher-Desctop/releases/latest)** |
+| 🌐 Страница загрузки | [messenger.xipher.pro/download](https://messenger.xipher.pro/download) |
+| 📦 Все версии | [Releases](https://github.com/prd1324/Xipher-Desctop/releases) |
 
-Лицензия — [MIT](LICENSE).
+Два формата:
 
-## v0.2 — Мессенджер (ядро)
+- **Установщик** `Xipher-Setup.exe` — ставит приложение, создаёт ярлыки в «Пуск» и на рабочем столе.
+- **Портативная версия** — папка с `Xipher.exe`, запуск без установки.
 
-- **Список чатов** (`/api/chats`) в сайдбаре: аватар, имя, последнее сообщение,
-  время, счётчик непрочитанных, поиск. «Избранные» (заметки себе) сверху.
-- **Переписка** (`/api/messages`): бабблы как в вебе — входящие `#1A1822`,
-  исходящие матовый градиент `#4A3A72→#3A2D5C`, время и галочки статуса,
-  reply-превью.
-- **Отправка** (`/api/send-message`) с оптимистичным добавлением и дедупом.
-- **Realtime** по WebSocket `wss://…/ws`: после коннекта auth-сообщение токеном,
-  входящие `new_message` прилетают в открытый чат и обновляют список; авто-reconnect.
-- Цвета — из `web/css/tokens.css` (матовый монохром + фиолетовый акцент).
+## ✨ Возможности
 
-## v0.3 — Новые чаты
+- **Чаты 1:1** — список чатов, переписка, поиск, «Избранное» (заметки себе), статусы и галочки.
+- **Группы и каналы** — создание, каталог публичных, управление (участники, роли, права,
+  invite-ссылки, форум-топики).
+- **Папки** — вкладки чатов в стиле Telegram.
+- **Контакты** — друзья, заявки, поиск и добавление, блокировка — встроенные в приложение.
+- **Звонки** — голосовые 1:1 (WebRTC через TURN) и групповые (SFU).
+- **Голосовые сообщения** — запись с живым waveform, воспроизведение с перемоткой.
+- **Сообщения** — ответы, копирование, пересылка, удаление, закрепление; вставка картинок из
+  буфера, многострочный ввод (Enter / Shift+Enter), просмотр фото на весь экран.
+- **Настройки** — аккаунт, приватность, активные сеансы, уведомления, звонки, язык, блокировки,
+  email для входа, Premium.
+- **Системные уведомления** и сворачивание в трей.
 
-- Поиск людей (`/api/search-users`) в диалоге «✏ Новый», кнопки «Написать» / «В друзья».
-- Заявки в друзья: отправка (`/api/friend-request`), входящие с принять/отклонить.
+## 🖥 Стек
 
-## v0.4 — Голосовые сообщения
+- **C++17** + **Qt 6** (Widgets, Network, WebSockets, Multimedia) — UI и сеть.
+- **libdatachannel** + **libopus** — WebRTC-звонки и кодирование голоса.
+- Сборка: **CMake** + **Ninja**, тулчейн **MinGW-w64** (MSYS2).
+- Прод-API: `https://messenger.xipher.pro` (HTTPS + WebSocket).
 
-- Запись через Qt Multimedia (FFmpeg-бэкенд) в MPEG-4/AAC.
-- Кнопка 🎤 в композере → запись с таймером, «Отмена» / отправка.
-- Загрузка `/api/upload-voice` (base64) → отправка `message_type=voice`.
-- Воспроизведение: баббл с ▶, файл тянется `GET /files/...` с `Authorization: Bearer`
-  и проигрывается (QMediaPlayer); локальный кэш и оптимистичный баббл сразу.
+## 🔧 Сборка из исходников
 
-### Анимации (как в Telegram Desktop / Discord)
-
-- **Воспроизведение** — `VoiceMessageWidget`: кружок ▶/⏸ + волновая дорожка
-  (waveform) с заливкой прогресса и перемоткой по клику (как в Telegram Desktop).
-  Форма волны детерминирована из id сообщения, прогресс/таймер от QMediaPlayer.
-- **Запись** — `RecordingBar` в стиле Discord: пульсирующая красная точка,
-  «живой» анимированный waveform, таймер, кнопки отмены/отправки.
-
-Дальше: вложения/файлы и фото, реакции, группы/каналы, звонки, E2EE.
-
-## Структура
-
-```
-src/
-  main.cpp                 — точка входа, глобальный QSS
-  app/MainWindow.*         — QStackedWidget: login / register / home
-  net/ApiClient.*          — QNetworkAccessManager → /api/login,/register,...
-  net/Session.*            — хранение токена (QSettings)
-  ui/Theme.h               — палитра + глобальный стиль (значения из login.css)
-  ui/BackgroundWidget.*    — отрисовка фона-градиентов
-  ui/AuthUi.h              — хелперы карточки (общие для login/register)
-  ui/LoginPage.*           — экран входа
-  ui/RegisterPage.*        — экран регистрации
-  ui/HomePage.*            — мини-экран после входа
-resources/resources.qrc    — задел под иконки/шрифты
-```
-
-## Сборка (Windows, MinGW из MSYS2)
+> Сборка под Windows, тулчейн MinGW из MSYS2.
 
 Тулчейн ставится один раз:
 
@@ -101,16 +68,12 @@ resources/resources.qrc    — задел под иконки/шрифты
 winget install MSYS2.MSYS2
 C:\msys64\usr\bin\bash -lc "pacman -S --needed --noconfirm \
   mingw-w64-x86_64-gcc mingw-w64-x86_64-cmake mingw-w64-x86_64-ninja \
-  mingw-w64-x86_64-qt6-base mingw-w64-x86_64-qt6-tools"
+  mingw-w64-x86_64-qt6-base mingw-w64-x86_64-qt6-multimedia \
+  mingw-w64-x86_64-qt6-websockets mingw-w64-x86_64-qt6-tools \
+  mingw-w64-x86_64-opus"
 ```
 
 Сборка:
-
-```bat
-build.bat
-```
-
-или вручную:
 
 ```sh
 export PATH=/c/msys64/mingw64/bin:$PATH
@@ -118,15 +81,33 @@ cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH=/c/m
 cmake --build build
 ```
 
-Результат: `build/bin/Xipher.exe`.
+Результат — `build/bin/Xipher.exe`.
 
-Чтобы exe запускался без MSYS2 в PATH, рядом раскладываются Qt-DLL и рантайм MinGW
-(делается `windeployqt6 Xipher.exe` + копирование зависимостей; уже выполнено для
-текущей сборки в `build/bin`).
+> **Звонки** требуют `libdatachannel` в `third_party/libdatachannel` (собирается отдельно).
+> Без неё клиент собирается полностью, звонки отключаются.
 
-## Дальнейшие шаги (после 0.1)
+Чтобы `.exe` запускался без MSYS2 в `PATH`, рядом раскладываются Qt-DLL и рантайм MinGW
+(`windeployqt6` + зависимости). Готовый установщик и портативную сборку собирает
+[`installer/build-installer.sh`](installer/build-installer.sh).
 
-- Список чатов и переписка (как в Telegram), WebSocket `/ws`.
-- E2EE (Signal-протокол) — на сервере уже есть `request_handler_signal`.
-- Звонки (TURN/SFU), боты, каналы.
-- Сборка инсталлятора, обновления.
+## 🔏 Подпись кода
+
+Релизные сборки Xipher для Windows подписываются цифровой подписью с использованием
+[SignPath.io](https://signpath.io), бесплатным сертификатом для подписи кода, предоставленным
+фондом [SignPath Foundation](https://signpath.org).
+
+> This project uses free code signing provided by [SignPath.io](https://signpath.io)
+> and a free code signing certificate by the [SignPath Foundation](https://signpath.org).
+
+Подпись выполняется автоматически в CI ([GitHub Actions](.github/workflows/release.yml)) при
+публикации тега `v*`. Подробности — в [docs/SIGNING.md](docs/SIGNING.md).
+
+## 🗺 Планы
+
+- E2EE (Signal-протокол) — на сервере уже есть поддержка.
+- Боты, реакции, read-receipts/typing, светлая тема, полная локализация (EN).
+- Автообновление.
+
+## 📄 Лицензия
+
+[MIT](LICENSE) © Xipher
