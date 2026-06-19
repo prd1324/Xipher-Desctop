@@ -1,5 +1,7 @@
 #include "net/CallEngine.h"
 
+#ifdef XIPHER_HAVE_WEBRTC
+
 #include <rtc/rtc.hpp>
 #include <opus.h>
 
@@ -342,3 +344,17 @@ void CallEngine::hangup() {
     pendingCands_.clear();
     if (pc_) { try { pc_->close(); } catch (...) {} pc_.reset(); }
 }
+
+#else   // ── XIPHER_HAVE_WEBRTC не задан: сборка без libdatachannel (без звонков) ──
+
+CallEngine::CallEngine(QObject* parent) : QObject(parent) {}
+CallEngine::~CallEngine() {}
+void CallEngine::setIceServers(const QList<IceServerCfg>&) {}
+void CallEngine::startAsCaller() { emit failed(QStringLiteral("Звонки недоступны в этой сборке")); }
+void CallEngine::startAsCallee(const QString&) { emit failed(QStringLiteral("Звонки недоступны в этой сборке")); }
+void CallEngine::setRemoteAnswer(const QString&) {}
+void CallEngine::addRemoteCandidate(const QString&, const QString&) {}
+void CallEngine::hangup() {}
+void CallEngine::setMuted(bool) {}
+
+#endif
