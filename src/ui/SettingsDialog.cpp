@@ -181,6 +181,7 @@ void SettingsDialog::buildChrome() {
 
     // ── Главный экран: обложка + строки-разделы ──────────────────────────────
     auto* main = new QWidget();
+    stack_->addWidget(main);   // ВАЖНО: главный экран — индекс 0 (до addSection)
     auto* mv = new QVBoxLayout(main);
     mv->setContentsMargins(0, 0, 0, 0);
     mv->setSpacing(0);
@@ -273,8 +274,7 @@ void SettingsDialog::buildChrome() {
     sa->setWidget(listW);
     mv->addWidget(sa, 1);
 
-    stack_->addWidget(main);          // индекс 0 — главный
-    stack_->setCurrentIndex(0);
+    stack_->setCurrentIndex(0);   // показываем главный экран
 }
 
 QWidget* SettingsDialog::wrapSubPage(const QString& title, QWidget* content) {
