@@ -29,6 +29,7 @@
 #include <QClipboard>
 #include <QInputDialog>
 #include <QContextMenuEvent>
+#include <QMouseEvent>
 #include <QEvent>
 #include <QFileDialog>
 #include <QFileInfo>
@@ -253,19 +254,17 @@ ChatPage::ChatPage(ApiClient* api, WsClient* ws, QWidget* parent)
     connect(api_, &ApiClient::channelMessagesLoaded, this, &ChatPage::onMessagesLoaded);
     connect(api_, &ApiClient::topicsLoaded, this, [this](const QString& gid, bool forum, const QList<Topic>& topics) {
         if (gid != currentPeerId_ || currentKind_ != ChatKind::Group) return;
+        if (!currentTopicId_.isEmpty()) { currentTopics_ = topics; return; }   // внутри темы — не дёргаем вид
         currentForum_ = forum;
-        if (forum && currentTopicId_.isEmpty()) {
-            showTopicsList(topics);
-        } else if (!forum) {
-            convStack_->setCurrentIndex(1); clearMessages(); api_->getGroupMessages(gid);
-        }
+        if (forum) convStack_->setCurrentIndex(2), showTopicsList(topics);
+        else { convStack_->setCurrentIndex(1); clearMessages(); api_->getGroupMessages(gid); }
     });
     connect(api_, &ApiClient::topicMessagesLoaded, this, [this](const QString& tid, const QList<ChatMessage>& msgs) {
         if (tid != currentTopicId_) return;
-        onMessagesLoaded(currentPeerId_, msgs);   // переиспользуем рендер
+        applyMessages(msgs);
     });
-    connect(api_, &ApiClient::topicActionDone, this, [this](bool ok, const QString& m) {
-        if (!ok && !m.isEmpty()) return;
+    connect(api_, &ApiClient::topicActionDone, this, [this](bool ok, const QString&) {
+        if (!ok) return;
         if (currentKind_ == ChatKind::Group && currentTopicId_.isEmpty())
             api_->getGroupTopics(currentPeerId_);   // обновить список тем
     });
@@ -1239,7 +1238,8 @@ bool ChatPage::eventFilter(QObject* obj, QEvent* e) {
         if (greeting_->isVisible()) greeting_->setGeometry(msgScroll_->viewport()->rect());
     }
     // Клик по картинке-сообщению → просмотр на весь экран.
-    if (e->type() == QEvent::MouseButtonRelease) {
+    if (e->type() == QEvent::MouseButtonRelease
+        && static_cast<QMouseEvent*>(e)->button() == Qt::LeftButton) {
         if (auto* w = qobject_cast<QWidget*>(obj)) {
             const QVariant fv = w->property("imgFull");
             if (fv.isValid() && fv.canConvert<QPixmap>()) {
@@ -1327,14 +1327,19 @@ bool ChatPage::eventFilter(QObject* obj, QEvent* e) {
     return QWidget::eventFilter(obj, e);
 }
 
-void ChatPage::onMessagesLoaded(const QString& friendId, const QList<ChatMessage>& messages) {
-    if (friendId != currentPeerId_) return;
+void ChatPage::applyMessages(const QList<ChatMessage>& messages) {
     // Сервер отдаёт историю DESC — разворачиваем в хронологию (старые сверху).
     currentMessages_ = messages;
     std::sort(currentMessages_.begin(), currentMessages_.end(),
               [](const ChatMessage& a, const ChatMessage& b) { return a.createdAt < b.createdAt; });
     renderMessages(msgSearch_ && searchBar_->isVisible() ? msgSearch_->text().trimmed() : QString());
     scrollToBottom();
+}
+
+void ChatPage::onMessagesLoaded(const QString& friendId, const QList<ChatMessage>& messages) {
+    if (friendId != currentPeerId_) return;
+    if (!currentTopicId_.isEmpty()) return;   // внутри темы рендерим только её сообщения
+    applyMessages(messages);
 }
 
 void ChatPage::renderMessages(const QString& filter) {
@@ -1752,7 +1757,8 @@ void ChatPage::onWsMessage(const QString& peerId, const ChatMessage& msgIn, cons
     const bool dupTemp = !tempId.isEmpty() && shownIds_.contains(tempId);
     const bool dupId   = !msg.id.isEmpty() && shownIds_.contains(msg.id);
 
-    if (peerId == currentPeerId_ && !dupTemp && !dupId) {
+    // Внутри темы форума root-сообщения группы не подмешиваем в открытую тему.
+    if (peerId == currentPeerId_ && !dupTemp && !dupId && currentTopicId_.isEmpty()) {
         auto* sb = msgScroll_->verticalScrollBar();
         const bool nearBottom = (sb->maximum() - sb->value()) < 140;
         if (!msg.id.isEmpty()) shownIds_.insert(msg.id);

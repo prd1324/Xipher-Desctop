@@ -109,6 +109,7 @@ private:
     void clearReplyTo();
     void reloadCurrentMessages();
     void clearMessages();
+    void applyMessages(const QList<ChatMessage>& messages);   // отсортировать + отрисовать
     void renderMessages(const QString& filter);   // отрисовать (с фильтром поиска)
     void updateGreeting();   // показать/скрыть пустой-чат приветствие
     void scrollToBottom();
