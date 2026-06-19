@@ -62,7 +62,7 @@ jobs:
           organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
           project-slug: 'Xipher_Desktop'
           signing-policy-slug: 'Xipher_test'
-          artifact-configuration-slug: 'exe'
+          artifact-configuration-slug: 'initial'
           github-artifact-id: ${{ steps.upload-unsigned.outputs.artifact-id }}
           wait-for-completion: true
           output-artifact-directory: 'signed'
