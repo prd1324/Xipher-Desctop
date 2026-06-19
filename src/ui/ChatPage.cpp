@@ -7,6 +7,7 @@
 #include "ui/PeerInfoPanel.h"
 #include "ui/ChatPickerDialog.h"
 #include "ui/ImageViewer.h"
+#include "ui/ComposerEdit.h"
 #include "net/Prefs.h"
 #include "ui/VoiceMessageWidget.h"
 #include "ui/RecordingBar.h"
@@ -66,6 +67,8 @@
 #include <QAudioOutput>
 #include <QDir>
 #include <QFile>
+#include <QBuffer>
+#include <QImage>
 #include <QDateTime>
 #include <QRegularExpression>
 #include <algorithm>
@@ -362,9 +365,12 @@ void ChatPage::buildUi() {
 #replyClose:hover { color:#F3F1F8; }
 #composer {
     background:#1A1822; border:1px solid rgba(255,255,255,0.10); border-radius:20px;
-    min-height:44px; padding:0 18px; color:#F3F1F8; font-size:15px;
+    padding:9px 16px; color:#F3F1F8; font-size:15px;
 }
 #composer:focus { border:1px solid #8B5CF6; }
+#composer QScrollBar:vertical { background:transparent; width:7px; margin:4px 2px; }
+#composer QScrollBar::handle:vertical { background:rgba(255,255,255,0.18); border-radius:3px; }
+#composer QScrollBar::add-line:vertical, #composer QScrollBar::sub-line:vertical { height:0; }
 #sendBtn {
     min-width:44px; max-width:44px; min-height:44px; max-height:44px; border:none;
     border-radius:22px; color:#fff; font-size:18px; font-weight:700;
@@ -592,7 +598,7 @@ QMenu::separator { height:1px; background:rgba(255,255,255,0.08); margin:4px 8px
     msgScroll_->viewport()->installEventFilter(this);
     connect(greeting_, &EmptyChatGreeting::greetingClicked, this, [this](const QString& e) {
         if (currentPeerId_.isEmpty()) return;
-        composer_->setText(e);
+        composer_->setPlainText(e);
         onSendClicked();
     });
 
@@ -646,9 +652,17 @@ QMenu::separator { height:1px; background:rgba(255,255,255,0.08); margin:4px 8px
     attachBtn_->setIcon(Icons::icon(Icons::Paperclip, 20, iconClr));
     attachBtn_->setIconSize(QSize(20, 20));
 
-    composer_ = new QLineEdit(normal);
+    composer_ = new ComposerEdit(normal);
     composer_->setObjectName(QStringLiteral("composer"));
     composer_->setPlaceholderText(QStringLiteral("Сообщение…"));
+    connect(composer_, &ComposerEdit::sendRequested, this, &ChatPage::onSendClicked);
+    connect(composer_, &ComposerEdit::imagePasted, this, [this](const QImage& img) {
+        if (currentPeerId_.isEmpty() || img.isNull()) return;
+        QByteArray bytes;
+        QBuffer buf(&bytes); buf.open(QIODevice::WriteOnly);
+        img.save(&buf, "PNG");
+        sendPhotoBytes(bytes, QStringLiteral("pasted.png"));
+    });
 
     emojiBtn_ = new QPushButton(normal);
     emojiBtn_->setObjectName(QStringLiteral("composerIcon"));
@@ -788,7 +802,6 @@ QMenu::separator { height:1px; background:rgba(255,255,255,0.08); margin:4px 8px
         }
     });
     connect(sendBtn_, &QPushButton::clicked, this, &ChatPage::onSendClicked);
-    connect(composer_, &QLineEdit::returnPressed, this, &ChatPage::onSendClicked);
     connect(search_, &QLineEdit::textChanged, this, &ChatPage::onSearchChanged);
     connect(micBtn_, &QPushButton::clicked, this, &ChatPage::onMicClicked);
     connect(recBar_, &RecordingBar::cancelClicked, this, &ChatPage::cancelRecording);
@@ -1714,7 +1727,7 @@ void ChatPage::reloadCurrentMessages() {
 }
 
 void ChatPage::onSendClicked() {
-    const QString text = composer_->text().trimmed();
+    const QString text = composer_->toPlainText().trimmed();
     if (text.isEmpty() || currentPeerId_.isEmpty()) return;
 
     const QString replyTo = replyToId_;
@@ -1889,7 +1902,7 @@ void ChatPage::onEmojiClicked() {
     if (!emojiPicker_) {
         emojiPicker_ = new EmojiPicker(this);
         connect(emojiPicker_, &EmojiPicker::emojiPicked, this, [this](const QString& e) {
-            composer_->insert(e);   // вставляем в позицию курсора, пикер не закрываем
+            composer_->insertPlainText(e);   // вставляем в позицию курсора, пикер не закрываем
         });
     }
     // Открываем панель над кнопкой, выравнивая по правому краю (как в Telegram).
@@ -2013,6 +2026,32 @@ void ChatPage::pickAndSendPhoto() {
     scrollToBottom();
 
     api_->uploadFile(bytes, base, tempId);
+}
+
+void ChatPage::sendPhotoBytes(const QByteArray& bytes, const QString& fileName) {
+    if (currentPeerId_.isEmpty() || bytes.isEmpty()) return;
+    // Сохраняем во временный файл, чтобы сразу показать превью.
+    const QString tmpPath = QDir::tempPath() + QStringLiteral("/xipher_%1_%2")
+        .arg(QString::number(QDateTime::currentMSecsSinceEpoch()), fileName);
+    { QFile tf(tmpPath); if (tf.open(QIODevice::WriteOnly)) { tf.write(bytes); tf.close(); } }
+
+    const QString tempId = QStringLiteral("tmpf_%1").arg(++tempCounter_);
+    shownIds_.insert(tempId);
+    pendingFileReceiver_ = currentPeerId_;
+    pendingPhotoIds_.insert(tempId);
+
+    ChatMessage m;
+    m.id = tempId; m.sent = true; m.status = QStringLiteral("sent");
+    m.messageType = QStringLiteral("image");
+    m.fileName = fileName; m.fileSize = bytes.size();
+    m.filePath = tmpPath;
+    m.time = QTime::currentTime().toString(QStringLiteral("HH:mm"));
+    m.createdAt = QDateTime::currentDateTime().toString(Qt::ISODate);
+    currentMessages_.append(m);
+    addBubble(m);
+    scrollToBottom();
+
+    api_->uploadFile(bytes, fileName, tempId);
 }
 
 void ChatPage::openChecklistDialog() {

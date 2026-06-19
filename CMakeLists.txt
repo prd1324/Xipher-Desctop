@@ -49,6 +49,7 @@ set(SOURCES
     src/ui/PeerInfoPanel.cpp
     src/ui/ChatPickerDialog.cpp
     src/ui/ImageViewer.cpp
+    src/ui/ComposerEdit.cpp
 )
 
 set(HEADERS
@@ -80,11 +81,19 @@ set(HEADERS
     src/ui/ProfilePanel.h
 )
 
+# Иконка EXE (windres). Абсолютный путь к .ico в кавычках — переживает пробелы.
+if(WIN32)
+    set(XIPHER_ICON_PATH "${CMAKE_CURRENT_SOURCE_DIR}/assets/xipher.ico")
+    configure_file(${CMAKE_CURRENT_SOURCE_DIR}/app.rc.in ${CMAKE_CURRENT_BINARY_DIR}/app.rc @ONLY)
+    set(APP_RC ${CMAKE_CURRENT_BINARY_DIR}/app.rc)
+endif()
+
 qt_add_executable(Xipher
     WIN32                       # GUI-приложение без консоли
     ${SOURCES}
     ${HEADERS}
     resources/resources.qrc
+    ${APP_RC}
 )
 
 target_include_directories(Xipher PRIVATE src)

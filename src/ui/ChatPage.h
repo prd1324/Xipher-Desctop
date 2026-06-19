@@ -18,6 +18,7 @@ class ChecklistWidget;
 class EmptyChatGreeting;
 class ProfilePanel;
 class SettingsDialog;
+class ComposerEdit;
 class QNetworkAccessManager;
 class QListWidget;
 class QLineEdit;
@@ -77,6 +78,7 @@ private slots:
     void onTimerClicked();
     void pickAndSendFile();
     void pickAndSendPhoto();
+    void sendPhotoBytes(const QByteArray& bytes, const QString& fileName);
     void openChecklistDialog();
     void sendLocation();
     void toggleSearch();
@@ -142,7 +144,7 @@ private:
     EmptyChatGreeting* greeting_ = nullptr;
     int          bubbleCount_ = 0;   // сколько сообщений сейчас в переписке
     QStackedWidget* composerStack_ = nullptr;  // 0 — ввод, 1 — запись
-    QLineEdit*   composer_   = nullptr;
+    ComposerEdit* composer_  = nullptr;
     QPushButton* sendBtn_    = nullptr;
     QPushButton* micBtn_     = nullptr;
     QPushButton* emojiBtn_   = nullptr;

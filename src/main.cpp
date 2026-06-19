@@ -1,6 +1,7 @@
 #include <QApplication>
 #include <QFont>
 #include <QPalette>
+#include <QIcon>
 #include <QFile>
 #include <QTextStream>
 #include <QDir>
@@ -32,6 +33,7 @@ int main(int argc, char** argv) {
     QApplication::setApplicationName(QStringLiteral("Desktop"));
     QApplication::setApplicationDisplayName(QStringLiteral("Xipher"));
     QApplication::setApplicationVersion(QStringLiteral("0.1.0"));
+    QApplication::setWindowIcon(QIcon(QStringLiteral(":/icons/xipher.png")));
 
     // Базовый шрифт. Inter если установлен в системе, иначе Segoe UI.
     QFont base(QStringLiteral("Inter"));
