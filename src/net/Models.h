@@ -65,6 +65,7 @@ struct Chat {
     ChatKind kind = ChatKind::User;
     int     membersCount = 0;
     QString customLink;        // @username группы/канала (опц.)
+    QString role;              // user_role в группе/канале (creator/admin/member/…)
     bool    isBot = false;
 };
 

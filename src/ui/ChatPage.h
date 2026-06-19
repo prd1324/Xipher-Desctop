@@ -186,6 +186,7 @@ private:
     QList<Chat> channelChats_;     // /api/get-channels
     ChatKind    currentKind_ = ChatKind::User;   // тип открытого чата
     bool        currentForum_ = false;           // открытая группа в режиме форума
+    bool        currentCanManage_ = false;       // я создатель/админ открытой группы/канала
     QString     currentTopicId_;                 // открытая тема (пусто = не в теме)
     QPushButton* topicBackBtn_ = nullptr;
     QLabel*      topicsTitle_  = nullptr;

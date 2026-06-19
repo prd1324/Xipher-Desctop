@@ -27,6 +27,8 @@
 #include <QAction>
 #include <QApplication>
 #include <QClipboard>
+#include <QInputDialog>
+#include <QContextMenuEvent>
 #include <QEvent>
 #include <QFileDialog>
 #include <QFileInfo>
@@ -1179,6 +1181,8 @@ void ChatPage::openChat(const Chat& chat) {
     peerStatus_->setText(status);
     currentForum_ = false;
     currentTopicId_.clear();
+    currentCanManage_ = (chat.role == QStringLiteral("creator") || chat.role == QStringLiteral("owner")
+                         || chat.role == QStringLiteral("admin"));
     if (topicBackBtn_) topicBackBtn_->setVisible(false);
 
     if (chat.kind == ChatKind::Group) {
@@ -1256,6 +1260,35 @@ bool ChatPage::eventFilter(QObject* obj, QEvent* e) {
                 auto* info = new PeerInfoPanel(api_, currentPeerId_, false, currentPeerName_, av, window());
                 connect(info, &PeerInfoPanel::changed, this, [this]() { api_->getGroups(); });
                 info->showAnimated();
+                return true;
+            }
+        }
+    }
+
+    // ПКМ по теме форума → управление (для админов/создателя).
+    if (e->type() == QEvent::ContextMenu) {
+        if (auto* w = qobject_cast<QWidget*>(obj)) {
+            const QVariant ti = w->property("topicIdx");
+            if (ti.isValid() && currentCanManage_) {
+                const int idx = ti.toInt();
+                if (idx < 0 || idx >= currentTopics_.size()) return true;
+                const Topic t = currentTopics_[idx];
+                QMenu menu(this);
+                QAction* rename = menu.addAction(QStringLiteral("Переименовать"));
+                QAction* close = menu.addAction(t.isClosed ? QStringLiteral("Открыть тему") : QStringLiteral("Закрыть тему"));
+                QAction* del = t.isGeneral ? nullptr : menu.addAction(QStringLiteral("Удалить тему"));
+                QAction* ch = menu.exec(static_cast<QContextMenuEvent*>(e)->globalPos());
+                if (ch == rename) {
+                    bool okk = false;
+                    const QString nm = QInputDialog::getText(this, QStringLiteral("Тема"),
+                        QStringLiteral("Новое название"), QLineEdit::Normal, t.name, &okk);
+                    if (okk && !nm.trimmed().isEmpty())
+                        api_->updateGroupTopic(t.id, nm.trimmed(), QString(), QString(), -1);
+                } else if (ch == close) {
+                    api_->updateGroupTopic(t.id, QString(), QString(), QString(), t.isClosed ? 0 : 1);
+                } else if (del && ch == del) {
+                    api_->deleteGroupTopic(t.id);
+                }
                 return true;
             }
         }

@@ -312,6 +312,7 @@ void ApiClient::getGroups() {
             c.lastMessage = o.value(QStringLiteral("description")).toString();
             c.customLink  = o.value(QStringLiteral("custom_link")).toString();
             c.membersCount= o.value(QStringLiteral("members_count")).toInt();
+            c.role        = o.value(QStringLiteral("user_role")).toString();
             c.kind        = ChatKind::Group;
             list.append(c);
         }
